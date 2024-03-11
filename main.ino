@@ -100,11 +100,19 @@ FirebaseConfig config;
 
 String mode = "EASY";
 
+// Stats
+int errors_count = 0;
+unsigned long start_time = 0;
+unsigned long touch_time= 0;
+unsigned long duration_total = 0;
+
 void setup() {
   Serial.begin(115200);
-  Serial.println("0");
   
+  //set up touch
   setup_mpr121();
+
+  //set up pixels
   setup_neopixel();
   
   Serial.println("1");
@@ -113,47 +121,39 @@ void setup() {
     return;
   }
 
-  // write the song in the file TODO: find another way to stock it
-  /*File file = SPIFFS.open("/song.txt", FILE_WRITE);
-
-  if (!file) {
-    Serial.println("Failed to open file for writing");
-    return;
-  }
-
-  // Write the content to the file
-  file.println("DO1,500");
-  file.println("RE,500");
-
-
-  // Close the file
-  file.close();*/
-
   // SET UP FOR THE SOUND 
-  //Connect channels and frequences 
-  ledcSetup(DO1_CHANNEL, DO1_frequence, PWM_RESOLUTION);
-  ledcSetup(RE_CHANNEL, RE_frequence, PWM_RESOLUTION);
-  ledcSetup(MI_CHANNEL, MI_frequence, PWM_RESOLUTION);
-  ledcSetup(FA_CHANNEL, FA_frequence, PWM_RESOLUTION);
-  ledcSetup(SOL_CHANNEL, SOL_frequence, PWM_RESOLUTION);
-  ledcSetup(LA_CHANNEL, LA_frequence, PWM_RESOLUTION);
-  ledcSetup(SI_CHANNEL, SI_frequence, PWM_RESOLUTION);
-  ledcSetup(DO2_CHANNEL, DO2_frequence, PWM_RESOLUTION);
+  setup_sound();
 
-  // ledcAttachPin(uint8_t pin, uint8_t channel);
-  ledcAttachPin(DO1_ChannelPin, DO1_CHANNEL);
-  ledcAttachPin(RE_ChannelPin, RE_CHANNEL);
-  ledcAttachPin(MI_ChannelPin, MI_CHANNEL);
-  ledcAttachPin(FA_ChannelPin, FA_CHANNEL);
-  ledcAttachPin(SOL_ChannelPin, SOL_CHANNEL);
-  ledcAttachPin(LA_ChannelPin, LA_CHANNEL);
-  ledcAttachPin(SI_ChannelPin, SI_CHANNEL);
-  ledcAttachPin(DO2_ChannelPin, DO2_CHANNEL);
+  //Welcome sound and led
+  int count_rainbow=0;
+  String note = "None";
+  note_index=0;
+  for(long firstPixelHue = 0; firstPixelHue < 5*65536; firstPixelHue += 256) {
+
+    pixels.rainbow(firstPixelHue);
+    // Above line is equivalent to: strip.rainbow(firstPixelHue, 1, 255, 255, true);
+    pixels.show(); // Update strip with new contents
+    if (count_rainbow>=49){
+      turnOff_son_note(note);
+      if (note_index>=15)
+      {
+        pixels.clear();
+        pixels.show();
+        break;
+      }
+      note = notes_welcome[note_index];
+      note_index++;
+      turnOn_son_note(note);
+      count_rainbow=0;
+    }
+    delay(10);
+    count_rainbow+=1; 
+  }
+  delay(1000);
+  note_index=0;
 }
 
 void loop() {
-  double note_success = 0;
-  double notes_total=0;
   
   if (mode == "EASY"){
     easy_mode();
@@ -162,13 +162,11 @@ void loop() {
   else {
       free_playing();
   }
-  //file.close();
 }
 
 
 //FREE PLAYING FUNCTION
-void free_playing()
-{
+void free_playing(){
   //turn on if touched 
   currtouched = cap.touched();
   if ((currtouched & _BV(DO1_TouchPin))){
@@ -275,17 +273,17 @@ void free_playing()
   }
 }
 
-
 // EASY MODE FUNCTIONS 
 void easy_mode(){
   Serial.println("in easy mode");
   Serial.println(note_index);
+
+  play_song_hb();
+  note_index=0;
   while (note_index<count_note) {
     Serial.println(note_index);
+    
     // GET THE NEXT NOTE 
-    /*String note = file.readStringUntil(','); 
-    String time = file.readStringUntil('\n');*/
-
     String note = notes[note_index];
     int time = duration_note[note_index];
 
@@ -296,7 +294,10 @@ void easy_mode(){
     light_led_note(note);
 
   // WAIT FOR THE TOUCH AND WHEN TOUCHED MAKE THE SOUND
+    start_time = millis();
     touch_and_sound(note);
+    touch_time= millis();
+    duration_total += (touch_time-start_time);
 
     // TURN OFF THE LED
     Serial.println("turn off pixels");
@@ -304,7 +305,57 @@ void easy_mode(){
     pixels.show();  
     note_index+=1;
   }
-   pixels.clear();
+
+  pixels.clear();
+  unsigned long duration_average = duration_total/count_note;
+  Serial.println(errors_count);
+  Serial.println(duration_average);
+  note_index=0;
+}
+
+void play_song_welcome(){
+  note_index=0;
+  while (note_index<count_note_welcome) {
+
+  String note = notes_welcome[note_index];
+  int time = duration_note_welcome[note_index];
+
+  unsigned long start = millis();
+  unsigned long end = millis();
+  while (end-start<time)
+  {
+    end = millis();
+    turnOn_son_note(note);
+  }
+
+  turnOff_son_note(note);
+  note_index++;
+  }
+  note_index=0;
+}
+
+void play_song_hb(){
+  note_index=0;
+  while (note_index<count_note) {
+
+  String note = notes[note_index];
+  int time = duration_note[note_index];
+
+  unsigned long start = millis();
+  unsigned long end = millis();
+  while (end-start<time)
+  {
+    end = millis();
+    dc = 128;
+    light_led_note(note); 
+    turnOn_son_note(note);
+  }
+
+  turnOff_son_note(note);
+  pixels.clear();
+  pixels.show();  
+  note_index++;
+  }
 }
 
 void touch_and_sound(String note){
@@ -319,6 +370,7 @@ void touch_and_sound(String note){
           break;
         }
         else {
+            errors_count += 1;
             false_touched_note_easy_mode(note);
             continue;
         }
@@ -359,6 +411,7 @@ void touch_and_sound(String note){
           break;
         }
         else {
+            errors_count += 1;
             false_touched_note_easy_mode(note);
             continue;
         }
@@ -398,6 +451,7 @@ void touch_and_sound(String note){
           break;
         }
         else {
+            errors_count += 1;
             false_touched_note_easy_mode(note);
             continue;
         }
@@ -434,6 +488,7 @@ void touch_and_sound(String note){
           break;
         }
         else {
+            errors_count += 1;
             false_touched_note_easy_mode(note);
             continue;
         }
@@ -470,6 +525,7 @@ void touch_and_sound(String note){
           break;
         }
         else {
+            errors_count += 1;
             false_touched_note_easy_mode(note);
             continue;
         }
@@ -506,6 +562,7 @@ void touch_and_sound(String note){
           break;
         }
         else {
+            errors_count += 1;
             false_touched_note_easy_mode(note);
             continue;
         }
@@ -542,6 +599,7 @@ void touch_and_sound(String note){
           break;
         }
         else {
+            errors_count += 1;
             false_touched_note_easy_mode(note);
             continue;
         }
@@ -578,6 +636,7 @@ void touch_and_sound(String note){
           break;
         }
         else {
+            errors_count += 1;
             false_touched_note_easy_mode(note);
             continue;
         }
@@ -621,6 +680,11 @@ void false_touched_note_easy_mode(String note){
 }
 
 void light_led_note(String note){
+
+  if (note=="None"){
+    return;
+  }
+
   if (note=="DO1"){
       pixels.setPixelColor(DO1_PIXEL, pixels.Color(255, 255, 255));
       pixels.show();   // Send the updated pixel colors to the hardware.
@@ -656,6 +720,68 @@ void light_led_note(String note){
 
 }
 
+void turnOn_son_note(String note){
+
+  if (note=="None"){
+    return;
+  }
+  if (note=="DO1"){
+      ledcWrite(DO1_CHANNEL, 128);   
+  }
+   if (note=="RE"){
+      ledcWrite(RE_CHANNEL, 128);    
+  }
+   if (note=="MI"){
+      ledcWrite(MI_CHANNEL, 128); 
+  }
+   if (note=="FA"){
+      ledcWrite(FA_CHANNEL, 128); 
+  }
+   if (note=="SOL"){
+      ledcWrite(SOL_CHANNEL, 128); 
+  }
+   if (note=="LA"){
+      ledcWrite(LA_CHANNEL, 128); 
+  }
+   if (note=="SI"){
+      ledcWrite(SI_CHANNEL, 128); 
+  }
+   if (note=="DO2"){
+      ledcWrite(DO2_CHANNEL, 128); 
+  }
+}
+
+void turnOff_son_note(String note){
+
+  if (note=="None"){
+    return;
+  }
+
+  if (note=="DO1"){
+      ledcWrite(DO1_CHANNEL, 0);    // Send the updated pixel colors to the hardware.
+  }
+   if (note=="RE"){
+      ledcWrite(RE_CHANNEL, 0);    // Send the updated pixel colors to the hardware.
+  }
+   if (note=="MI"){
+      ledcWrite(MI_CHANNEL, 0); 
+  }
+   if (note=="FA"){
+      ledcWrite(FA_CHANNEL, 0); 
+  }
+   if (note=="SOL"){
+      ledcWrite(SOL_CHANNEL, 0); 
+  }
+   if (note=="LA"){
+      ledcWrite(LA_CHANNEL, 0); 
+  }
+   if (note=="SI"){
+      ledcWrite(SI_CHANNEL, 0); 
+  }
+   if (note=="DO2"){
+      ledcWrite(DO2_CHANNEL, 0); 
+  }
+}
 
 //Medium mode functions // 
 void false_touched_note_medium_mode(String note, uint32_t currtouched){
@@ -766,6 +892,30 @@ void false_touched_note_medium_mode(String note, uint32_t currtouched){
 }
 
 // SET UP FUNCTIONS //
+
+void setup_sound(){
+  // SET UP FOR THE SOUND 
+  //Connect channels and frequences 
+  ledcSetup(DO1_CHANNEL, DO1_frequence, PWM_RESOLUTION);
+  ledcSetup(RE_CHANNEL, RE_frequence, PWM_RESOLUTION);
+  ledcSetup(MI_CHANNEL, MI_frequence, PWM_RESOLUTION);
+  ledcSetup(FA_CHANNEL, FA_frequence, PWM_RESOLUTION);
+  ledcSetup(SOL_CHANNEL, SOL_frequence, PWM_RESOLUTION);
+  ledcSetup(LA_CHANNEL, LA_frequence, PWM_RESOLUTION);
+  ledcSetup(SI_CHANNEL, SI_frequence, PWM_RESOLUTION);
+  ledcSetup(DO2_CHANNEL, DO2_frequence, PWM_RESOLUTION);
+
+  // ledcAttachPin(uint8_t pin, uint8_t channel);
+  ledcAttachPin(DO1_ChannelPin, DO1_CHANNEL);
+  ledcAttachPin(RE_ChannelPin, RE_CHANNEL);
+  ledcAttachPin(MI_ChannelPin, MI_CHANNEL);
+  ledcAttachPin(FA_ChannelPin, FA_CHANNEL);
+  ledcAttachPin(SOL_ChannelPin, SOL_CHANNEL);
+  ledcAttachPin(LA_ChannelPin, LA_CHANNEL);
+  ledcAttachPin(SI_ChannelPin, SI_CHANNEL);
+  ledcAttachPin(DO2_ChannelPin, DO2_CHANNEL);
+};
+
 void setup_mpr121(){
 
   while (!Serial) { // needed to keep leonardo/micro from starting too fast!
@@ -794,3 +944,4 @@ void setup_neopixel(){
   pixels.show();
   pixels.setBrightness(50); // Set BRIGHTNESS to about 1/5 (max = 255)
 }
+
