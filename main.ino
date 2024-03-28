@@ -14,9 +14,15 @@
 using namespace std;
 
 #include <WiFi.h>
-#include <Firebase_ESP_Client.h>
+#include <HTTPClient.h>
+
 #include "song.h"
 
+//Screen 
+#include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 
 // FREQUENCES
 #define DO1_frequence 523
@@ -74,37 +80,67 @@ using namespace std;
 Adafruit_NeoPixel pixels(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 // TOUCH PARAMETERS AND SETUP
-// You can have up to 4 on one i2c bus but one is enough for testing!
 Adafruit_MPR121 cap = Adafruit_MPR121();
 uint32_t currtouched = 0;
 
 // SOUND PARAMETERS AND SETYP
 const int PWM_RESOLUTION = 8; 
-    // We'll use same resolution as Uno (8 bits, 0-255) but ESP32 can go up to 16 bits 
-    // The max duty cycle value based on PWM resolution (will be 255 if resolution is 8 bits)
 const int MAX_DUTY_CYCLE = (int)(pow(2, PWM_RESOLUTION) - 1); 
 int dc = 128;
 
-
-//DATABASE
-// Insert your network credentials
+// GOOGLE SHEET 
 #define WIFI_SSID "Ophra Iphone"
 #define WIFI_PASSWORD "ophraaaa"
+String GOOGLE_SCRIPT_ID = "AKfycbxXSI4WI69hEjqqtUgDvyadQF84r0Jkc7M-9XHJstTIqqyZywKauGdRqMFZYKvHzms2Aw";    // change Google script ID
 
-// Insert Firebase project API Key
-#define API_KEY "AIzaSyDfufadFI30mQoQpQtXNv4N3Mc9DHsQPEc"
+// Screen and buttons 
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
-// Insert RTDB URLefine the RTDB URL */
-#define DATABASE_URL "https://piano-learning-3f147-default-rtdb.europe-west1.firebasedatabase.app/" 
+const int buttonUpPin = 18; 
+const int buttonDownPin = 19; 
+const int buttonSelectPin= 23;
+const int buttonReturnPin = 15;
 
-//Define Firebase Data object
-FirebaseData fbdo;
-FirebaseAuth auth;
-FirebaseConfig config;
+int buttonUpState = 0;  // variable for reading the pushbutton status
+int buttonDownState = 0;  // variable for reading the pushbutton status
+int buttonSelectState = 0;  // variable for reading the pushbutton status
+int buttonReturnState = 0;  // variable for reading the pushbutton status
+
+#define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+#define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+#define EASY_MODE 1
+#define MEDIUM_MODE 2
+#define ADVANCED_MODE 3
+#define FREE_MODE 4
+#define RECORD_MODE 5
 
 // Global variables
-String mode = "MEDIUM";
+
+int count_note = 0;
+String notes[200]; // Assuming a maximum of 200 notes
+int duration_note[200]; // Assuming a maximum of 200 durations
+int num_notes[200]; // Assuming a maximum of 200 numbers
+
+String SongNames[1000];
+int NumSongsTotal = 3;
+int mode = 1;
+int songNum = 0;
+int songIndex = 1;
+
+String song1;
+String song2; 
+String song3; 
+String song4; 
+String song5;
+
+int returnValue=0;
+
 uint32_t note_index = 0;
+uint32_t num_note_index = 0;
+
 
 // Stats variables
 int errors_count = 0;
@@ -115,6 +151,14 @@ unsigned long duration_total = 0;
 void setup() {
   Serial.begin(115200);
   
+  // SET UP FOR GOOGLE SHEET 
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
   //set up touch
   setup_mpr121();
 
@@ -129,27 +173,48 @@ void setup() {
   // SET UP FOR THE SOUND 
   setup_sound();
 
+  // SET UP FOR SCREEN 
+  setup_screen();
+  
   //Welcome sound and led
   welcome_sound_and_led();
 }
 
 void loop() {
-  note_index=0;
-
-  if (mode == "EASY"){
-    easy_mode();
-    mode = "FREE";
-  }
-
-  if(mode=="FREE_PLAYING") {
-      free_playing();
-  }
-
-  if (mode=="MEDIUM"){
-    medium_mode();
-  }
+  menu_mode();
 }
 
+
+void start_game() {
+  note_index=0;
+  Serial.println("Starting game");
+
+  if (mode == EASY_MODE){
+    easy_mode();
+    return;
+  }
+
+  if(mode== FREE_MODE) {
+      free_playing();
+      return;
+  }
+
+  if (mode== MEDIUM_MODE){
+    medium_mode();
+    return;
+  }
+
+  /*if (mode== RECORD_MODE){
+    record_mode();
+    return;
+  }*/
+
+  if (mode == ADVANCED_MODE){
+    advanced_mode();
+    return;
+  }
+  returnValue=1;
+}
 
 // PLAY THE SONG
 void play_song(){
@@ -411,6 +476,8 @@ void easy_mode(){
 
 // Call function to play the key according to the note - ONE NOTE
 void play_one_key_note(String note){
+
+  Serial.println("note is " + note);
   if (note=="DO1"){
     play_one_key_params(note, DO1_TouchPin, DO1_CHANNEL, DO1_PIXEL);
     return;
@@ -458,6 +525,7 @@ void play_one_key_params(String note, int touch_pin, int channel, int pixel){
     
     unsigned long start_play = 0;
     unsigned long time_played = 0;
+    Serial.println("note is " + note + " and pin " + touch_pin);
 
     // wait for touch
     while (!(currtouched & _BV(touch_pin))){
@@ -470,7 +538,7 @@ void play_one_key_params(String note, int touch_pin, int channel, int pixel){
         }
         // WRONG PIN TOUCHED
         else {
-            if (mode=="EASY"){
+            if (mode==EASY_MODE){
               error_touch(); // show 3 times red lights
               light_led_note(note); //Show our note led in white again
             }
@@ -487,10 +555,16 @@ void play_one_key_params(String note, int touch_pin, int channel, int pixel){
     ledcWrite(channel, 128); 
     pixels.setPixelColor(pixel, pixels.Color(0, 255, 0));
     pixels.show(); 
+    int error_made=0;
 
     // wait for release
     while(1){
       time_played = millis()-start_play;
+      Serial.print("time played : ");
+      Serial.println(time_played);
+      Serial.print("duration : ");
+      Serial.println(duration_note[note_index]);
+
       //Serial.println("wait for release");
       currtouched = cap.touched();
       if (!(currtouched & _BV(touch_pin))) {
@@ -499,25 +573,53 @@ void play_one_key_params(String note, int touch_pin, int channel, int pixel){
       }
 
       // if mode advanced, color code
-      if (mode=="ADVANCED")
+      if (mode==ADVANCED_MODE)
       {
         // if less than 100 ms until the end of the duration expected => warn with yellow light
-        if (duration_note[note_index]-time_played < 100 && duration_note[note_index]-time_played>=0)
-        {
-          pixels.setPixelColor(pixel, pixels.Color(255,255,0)); // yellow
+        if (duration_note[note_index]>time_played){
+          
+          Serial.print("you still need to play: ");
+          Serial.print(duration_note[note_index]-time_played);
+          Serial.println(" ms ");
+
+          if (duration_note[note_index]-time_played < 250)
+          {
+            Serial.println("show yellow ");
+            pixels.setPixelColor(pixel, pixels.Color(255,255,0)); // yellow
+            pixels.show(); 
+
+          }
         }
 
         // if played more the duration expected but less than 100ms => light orange light 
-        if (time_played-duration_note[note_index] < 100 && time_played-duration_note[note_index]>=0)
-        {
-          pixels.setPixelColor(pixel, pixels.Color(255, 165, 0)); // orange
-        }
+        if (duration_note[note_index]<=time_played){
 
-        if (time_played-duration_note[note_index] >= 100)
-        {
-          pixels.setPixelColor(pixel, pixels.Color(255,0,0)); // turn red
-          errors_count+=1; //count an error
-          note_index -=1; //try this note again
+          Serial.print("You have played too much by: ");
+          Serial.print(time_played-duration_note[note_index]);
+          Serial.println(" ms ");
+
+          if (time_played-duration_note[note_index] < 300)
+          {
+            Serial.println("show orange ");
+            pixels.setPixelColor(pixel, pixels.Color(255, 165, 0)); // orange
+            pixels.show(); 
+
+          }
+
+          if (time_played-duration_note[note_index] >= 300)
+          {
+
+            Serial.println("show red ");
+            pixels.setPixelColor(pixel, pixels.Color(255,0,0)); // turn red
+            errors_count+=1; //count an error
+            pixels.show(); 
+            if (error_made==0){
+              note_index = note_index-1; //try this note again
+              Serial.print("removing one: ");
+              Serial.println(note_index);
+            }
+            error_made=1;
+          }
         }
       }
     }
@@ -783,7 +885,6 @@ void play_two_keys_params(int touch_pin1, int channel1, int pixel1, int touch_pi
       // start chrono to check if touched in the same time
       if (second_touched==0 && first_touched==0){
         start_firt_touch = millis();
-        Serial.print(start_firt_touch);
       }
       first_touched=1;
 
@@ -807,7 +908,6 @@ void play_two_keys_params(int touch_pin1, int channel1, int pixel1, int touch_pi
       // start chrono to check if touched in the same time
       if (second_touched==0 && first_touched==0){
         start_firt_touch = millis();
-        Serial.print(start_firt_touch);
       }
       second_touched=1;
       ledcWrite(channel2, 128); 
@@ -868,7 +968,7 @@ void play_two_keys_params(int touch_pin1, int channel1, int pixel1, int touch_pi
       unsigned long time_passed = millis()- start_firt_touch;
       
       //too long to touch the second one 
-      if (time_passed>500){
+      if (time_passed>300){
         Serial.println("more than 500");
 
         ledcWrite(channel2, 0); 
@@ -897,31 +997,65 @@ void play_two_keys_params(int touch_pin1, int channel1, int pixel1, int touch_pi
   int first_released=0;
   int second_released=0;
   unsigned long time_played = 0;
-  
+  int error_made = 0;
   while(1){
     currtouched = cap.touched();
     time_played = millis()-start_both_touched;
 
-    if (mode== "ADVANCED")
+    // if mode advanced, color code
+    if (mode==ADVANCED_MODE)
     {
       // if less than 100 ms until the end of the duration expected => warn with yellow light
-        if (duration_note[note_index]-time_played < 100 && duration_note[note_index]-time_played>=0)
+      if (duration_note[note_index]>time_played){
+        
+        /*Serial.print("you still need to play: ");
+        Serial.print(duration_note[note_index]-time_played);
+        Serial.println(" ms ");*/
+
+        if (duration_note[note_index]-time_played < 250)
         {
-          pixels.setPixelColor(pixel, pixels.Color(255,255,0)); // yellow
+          //Serial.println("show yellow ");
+          pixels.setPixelColor(pixel1, pixels.Color(255,255,0)); // yellow
+          pixels.setPixelColor(pixel2, pixels.Color(255,255,0)); // yellow
+          pixels.show(); 
+        }
+      }
+
+      // if played more the duration expected but less than 100ms => light orange light 
+      if (duration_note[note_index]<=time_played){
+
+        /*Serial.print("You have played too much by: ");
+        Serial.print(time_played-duration_note[note_index]);
+        Serial.println(" ms ");*/
+
+        if (time_played-duration_note[note_index] < 300)
+        {
+          //Serial.println("show orange ");
+          pixels.setPixelColor(pixel1, pixels.Color(255, 165, 0)); // orange
+          pixels.setPixelColor(pixel2, pixels.Color(255,165,0)); // orange
+          pixels.show(); 
+
         }
 
-        // if played more the duration expected but less than 100ms => light orange light 
-        if (time_played-duration_note[note_index] < 100 && time_played-duration_note[note_index]>=0)
+        if (time_played-duration_note[note_index] >= 300)
         {
-          pixels.setPixelColor(pixel, pixels.Color(255, 165, 0)); // orange
-        }
 
-        if (time_played-duration_note[note_index] >= 100)
-        {
-          pixels.setPixelColor(pixel, pixels.Color(255,0,0)); // turn red
+          //Serial.println("show red ");
+          pixels.setPixelColor(pixel1, pixels.Color(255,0,0)); //  red
+          pixels.setPixelColor(pixel2, pixels.Color(255,0,0)); // red
+
           errors_count+=1; //count an error
-          note_index -=1; //try this note again
+          pixels.show(); 
+          if (error_made==0){
+            note_index = note_index-2; //try these notes again
+            num_note_index-=1;
+            Serial.print("removing one: ");
+            Serial.println(note_index);
+            Serial.println(num_note_index);
+          }
+          error_made=1;
         }
+      }
     }
     // the two notes are released 
     if (!(currtouched & _BV(touch_pin2)) && !(currtouched & _BV(touch_pin1)))
@@ -968,6 +1102,7 @@ void play_two_keys_params(int touch_pin1, int channel1, int pixel1, int touch_pi
         ledcWrite(channel1, 0); 
         error_touch(); //red
         note_index-=2; // make the user play again those notes 
+        num_note_index-=1;
         break;
       }
     }
@@ -1100,13 +1235,18 @@ void false_touched_note_medium_mode(uint32_t currtouched){
 
 // ADVANCED MODE 
 void advanced_mode(){
-  Serial.println("You are in advanced mode");
-
+  Serial.println("advanced mode");
+  
   //play_song();
+  num_note_index=0;
   note_index=0;
   while (note_index<count_note) {
-     
-    int num_note = num_notes[note_index]; // How many notes in the same time
+     Serial.print("note index is ");
+     Serial.println(note_index);
+    int num_note = num_notes[num_note_index]; // How many notes in the same time
+    num_note_index+=1;
+    Serial.println("num notes is ");
+    Serial.println(num_note);
 
     // if one note 
     if (num_note==1){
@@ -1165,6 +1305,618 @@ void advanced_mode(){
   }
 }
 
+// RECORD MODE 
+/*void record_mode(){
+  unsigned long last_time_touched = millis();
+
+  while (millis()-last_time_touched<3000){
+    currtouched = cap.touched();
+    
+    // note is touched 
+    if ((currtouched & _BV(DO1_TouchPin))){
+
+      ledcWrite(DO1_CHANNEL, 128); 
+      pixels.setPixelColor(DO1_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();
+
+      
+    }
+
+    if ((currtouched & _BV(RE_TouchPin))){
+      //Serial.println("RE IS touched");
+
+      ledcWrite(RE_CHANNEL, 128); 
+      pixels.setPixelColor(RE_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();
+    }
+
+    if ((currtouched & _BV(MI_TouchPin))){
+      ledcWrite(MI_CHANNEL, 128); 
+      pixels.setPixelColor(MI_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();
+    }
+
+    if ((currtouched & _BV(FA_TouchPin))){
+      ledcWrite(FA_CHANNEL, 128); 
+      pixels.setPixelColor(FA_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();
+
+    }
+
+    if ((currtouched & _BV(SOL_TouchPin))){
+      ledcWrite(SOL_CHANNEL, 128); 
+      pixels.setPixelColor(SOL_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();
+    }
+
+    if ((currtouched & _BV(LA_TouchPin))){
+      ledcWrite(LA_CHANNEL, 128); 
+      pixels.setPixelColor(LA_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();
+    }
+
+    if ((currtouched & _BV(SI_TouchPin))){
+      ledcWrite(SI_CHANNEL, 128); 
+      pixels.setPixelColor(SI_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();
+    }
+
+    if ((currtouched & _BV(DO2_TouchPin))){
+      ledcWrite(DO2_CHANNEL, 128); 
+      pixels.setPixelColor(DO2_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();
+    }
+
+
+    //turn off if released
+    if (!(currtouched & _BV(DO1_TouchPin))) {
+          ledcWrite(DO1_CHANNEL, 0); 
+          pixels.setPixelColor(DO1_PIXEL, pixels.Color(0, 0, 0));
+          pixels.show();
+    }
+
+    if (!(currtouched & _BV(RE_TouchPin))) {
+          ledcWrite(RE_CHANNEL, 0); 
+          pixels.setPixelColor(RE_PIXEL, pixels.Color(0, 0, 0));
+          pixels.show();
+    }
+
+    if (!(currtouched & _BV(MI_TouchPin))) {
+          ledcWrite(MI_CHANNEL, 0); 
+          pixels.setPixelColor(MI_PIXEL, pixels.Color(0, 0, 0));
+          pixels.show();
+    }
+
+    if (!(currtouched & _BV(FA_TouchPin))) {
+          ledcWrite(FA_CHANNEL, 0); 
+          pixels.setPixelColor(FA_PIXEL, pixels.Color(0, 0, 0));
+          pixels.show();
+    }
+
+    if (!(currtouched & _BV(SOL_TouchPin))) {
+          ledcWrite(SOL_CHANNEL, 0); 
+          pixels.setPixelColor(SOL_PIXEL, pixels.Color(0, 0, 0));
+          pixels.show();
+    }
+
+    if (!(currtouched & _BV(LA_TouchPin))) {
+          ledcWrite(LA_CHANNEL, 0); 
+          pixels.setPixelColor(LA_PIXEL, pixels.Color(0, 0, 0));
+          pixels.show();
+    }
+
+    if (!(currtouched & _BV(SI_TouchPin))) {
+          ledcWrite(SI_CHANNEL, 0); 
+          pixels.setPixelColor(SI_PIXEL, pixels.Color(0, 0, 0));
+          pixels.show();
+    }
+
+    if (!(currtouched & _BV(DO2_TouchPin))) {
+          ledcWrite(DO2_CHANNEL, 0); 
+          pixels.setPixelColor(DO2_PIXEL, pixels.Color(0, 0, 0));
+          pixels.show();
+    }
+  }
+}*/
+
+
+// Screen functions 
+void menu_mode(){
+  
+  //show the menu with the cursor (inverse)
+  show_menu_mode(mode);
+  
+  while(1){
+    buttonUpState = digitalRead(buttonUpPin);
+    buttonDownState = digitalRead(buttonDownPin);
+    buttonSelectState = digitalRead(buttonSelectPin);
+
+    // UP 
+    if (buttonUpState == HIGH) {
+      if (mode!=1){
+        mode= mode-1;
+      }
+      break;
+    }
+
+    // DOWN
+    if (buttonDownState == HIGH) {
+      if(mode!=5){
+        mode=mode+1;
+      }
+      break;
+    }
+
+    // SELECT
+    if (buttonSelectState == HIGH) {
+      //mode number (1,2,3,4,5) is in "mode" variable
+      Serial.print("Selected mode ");
+      Serial.println(mode);
+      if (mode==FREE_MODE){
+        start_game();
+      }
+      else{
+        call_menu_song();
+      }
+      break;
+    }
+  }
+}
+
+void show_menu_mode(int mode){
+
+  display.clearDisplay();
+  display.setCursor(0,0);             // Start at top-left corner
+
+  display.setTextSize(1);             // Normal 1:1 pixel scale
+  display.setTextColor(SSD1306_WHITE);        // Draw white text
+  display.println(F("Choose mode: "));
+  
+  if (mode==EASY_MODE){
+    display.setTextColor(SSD1306_BLACK, SSD1306_WHITE); // Draw 'inverse' text
+    display.println(F("Easy"));
+
+    display.setTextColor(SSD1306_WHITE);        // Draw white text
+    display.println(F("Medium"));
+    display.println(F("Advanced"));
+    display.println(F("Free"));
+    display.println(F("Record"));
+
+  }
+
+  if (mode==MEDIUM_MODE){
+    display.println(F("Easy"));
+
+    display.setTextColor(SSD1306_BLACK, SSD1306_WHITE); // Draw 'inverse' text
+    display.println(F("Medium"));
+    
+    display.setTextColor(SSD1306_WHITE);        // Draw white text
+    display.println(F("Advanced"));
+    display.println(F("Free"));
+    display.println(F("Record"));
+  }
+
+  if(mode==ADVANCED_MODE){
+    display.println(F("Easy"));
+    display.println(F("Medium"));
+    
+    display.setTextColor(SSD1306_BLACK, SSD1306_WHITE); // Draw 'inverse' text
+    display.println(F("Advanced")); 
+    display.setTextColor(SSD1306_WHITE);
+
+    display.println(F("Free"));       
+    display.println(F("Record"));
+  }
+
+  if(mode==FREE_MODE){
+    display.println(F("Easy"));
+    display.println(F("Medium"));
+    display.println(F("Advanced"));
+    
+    display.setTextColor(SSD1306_BLACK, SSD1306_WHITE);
+    display.println(F("Free")); 
+    display.setTextColor(SSD1306_WHITE);
+
+    display.println(F("Record"));
+  }
+
+  if(mode==RECORD_MODE){
+    display.println(F("Easy"));
+    display.println(F("Medium"));
+    display.println(F("Advanced"));
+    display.println(F("Free")); 
+    
+    display.setTextColor(SSD1306_BLACK, SSD1306_WHITE);
+    display.println(F("Record"));
+  }
+  display.display();
+  delay(250);
+}
+
+void call_menu_song(){
+  while(returnValue==0){
+    menu_song();
+  }
+  returnValue=0;
+}
+
+void menu_song(){
+
+  //SONG NUM IS 0,5,10... (multiples of 5)
+  //SONG INDEX IS 1,2,3,4,5 (on screen)
+  //We show from 5 songs from songNum
+  //When chosing we do songNum+songIndex-1 to know which song has been chosen
+  show_menu_song(); 
+  
+  while(1){
+    buttonUpState = digitalRead(buttonUpPin);
+    buttonDownState = digitalRead(buttonDownPin);
+    buttonSelectState = digitalRead(buttonSelectPin);
+    buttonReturnState = digitalRead(buttonReturnPin);
+    
+    // UP 
+    if (buttonUpState == HIGH) {
+      Serial.println("HIGH");
+      //if we are all up on the screen and there is a page before 
+      if (songIndex == 1){
+        if(songNum!=0) {
+          songNum -=5; //get 5 before (we display them 5 by 5)
+        }
+      }
+      else{
+        songIndex -=1; //go up by 1
+      }
+      break;
+    }
+
+    // DOWN
+    if (buttonDownState == HIGH) {
+      Serial.println("DOWN");
+      Serial.print("songNum: ");
+      Serial.println(songNum);
+      Serial.print("songIndex: ");
+      Serial.println(songIndex);
+      //to check here the second condition
+      if (songIndex == 5){ 
+        if (songNum+5<NumSongsTotal){
+          songNum +=5; //get 5 after (we display them 5 by 5)
+        }
+      }
+      else if (songIndex+songNum<NumSongsTotal){
+        songIndex +=1; //go down by 1
+      }
+      break;
+    }
+
+    // SELECT
+    if (buttonSelectState == HIGH) {
+      songNum = songNum+songIndex-1;
+      Serial.print("Song selected is ");
+      Serial.println(songNum);
+      // LOADING THE SONG
+      display.clearDisplay();
+      display.setCursor(0,0); 
+      display.setTextSize(1);                     // Normal 1:1 pixel scale
+      display.setTextColor(SSD1306_WHITE); 
+      display.println(F("loading the song..... "));
+      display.display();
+      
+      String payload = readFromGoogleSheets(songNum);
+      if (payload!=""){
+        split_arrays(payload); //keep the music array (notes,dur,num) in global arrays
+      } 
+
+      display.clearDisplay();
+      display.setCursor(0,0); 
+      display.println(F("Let's play!!"));
+      display.display();
+
+      Serial.println(payload);
+
+      start_game();
+      songNum=0;
+      songIndex=1;
+      return;
+    }
+
+    if (buttonReturnState==HIGH) {
+      songNum=0;
+      songIndex=1;
+      mode=1;
+      returnValue=1;
+      return;
+    }
+  }
+}
+
+void show_menu_song(){
+  display.clearDisplay();
+  display.setCursor(0,0);             // Start at top-left corner
+  Serial.println("show menu songs");
+
+  // take 5 next songs from songNum 
+  if (songNum%5==0){
+    song1 = SongNames[songNum];
+    Serial.print("song 1 is: ");
+    Serial.println(song1);
+    song2 = SongNames[songNum+1];
+    Serial.print("song 2 is: ");
+    Serial.println(song2);
+    song3 = SongNames[songNum+2];
+    Serial.print("song 3 is: ");
+    Serial.println(song3);
+    song4 = SongNames[songNum+3];
+    Serial.print("song 4 is: ");
+    Serial.println(song4);
+    song5 = SongNames[songNum+4];
+    Serial.print("song 5 is: ");
+    Serial.println(song5);
+  }
+
+  display.setTextSize(1);                     // Normal 1:1 pixel scale
+  display.setTextColor(SSD1306_WHITE);        // Draw white text
+  display.println(F("Choose song: "));
+
+  if (songIndex==1){
+    display.setTextColor(SSD1306_BLACK, SSD1306_WHITE); // Draw 'inverse' text
+    display.println(song1);
+    display.setTextColor(SSD1306_WHITE);        // Draw white text
+
+    display.println(song2);
+    display.println(song3);
+    display.println(song4);
+    display.println(song5);
+
+  }
+
+  if (songIndex==2){
+    display.println(song1);
+
+    display.setTextColor(SSD1306_BLACK, SSD1306_WHITE); // Draw 'inverse' text
+    display.println(song2);
+    display.setTextColor(SSD1306_WHITE);        // Draw white text
+
+    display.println(song3);
+    display.println(song4);
+    display.println(song5);
+  }
+
+  if(songIndex==3){
+    display.println(song1);
+    display.println(song2);
+    
+    display.setTextColor(SSD1306_BLACK, SSD1306_WHITE);
+    display.println(song3);
+    display.setTextColor(SSD1306_WHITE);        // Draw white text
+
+    display.println(song4);
+    display.println(song5);
+
+  }
+
+  if(songIndex==4){
+    display.println(song1);
+    display.println(song2);
+    display.println(song3);
+
+    display.setTextColor(SSD1306_BLACK, SSD1306_WHITE); // Draw 'inverse' text
+    display.println(song4);
+    display.setTextColor(SSD1306_WHITE);        // Draw white text
+
+    display.println(song5);
+  }
+
+  if(songIndex==5){
+    display.println(song1);
+    display.println(song2);
+    display.println(song3);
+    display.println(song4);
+    display.setTextColor(SSD1306_BLACK, SSD1306_WHITE); // Draw 'inverse' text
+    display.println(song5);
+  }
+  display.display();
+  delay(250);
+}
+
+// GOOGLE SHEET FUNCTIONS // 
+void split_arrays(String payload){
+
+  char* token; // Pointer to hold each token
+
+  // Convert the payload string to a character array
+  char payloadArray[payload.length() + 1];
+  payload.toCharArray(payloadArray, payload.length() + 1);
+
+  // Split the payload by '/'
+  token = strtok(payloadArray, "/");
+  String song = String(token); // name of song
+
+  token = strtok(NULL, "/");
+  count_note = atoi(token); // count number
+
+  token = strtok(NULL, "/");
+  String notesString = String(token); // notes array: DO,RE,MI,FA
+
+  token = strtok(NULL, "/");
+  String durationString = String(token); // durationa array: 500,500
+
+  token = strtok(NULL, "/");
+  String numString = String(token); // num array: 1,1,8
+
+  // Split notes, duration, and num strings by ','
+  int i = 0;
+  token = strtok(notesString.begin(), ",");
+  while (token != NULL) {
+    notes[i++] = String(token);
+    token = strtok(NULL, ",");
+  }
+
+  i = 0;
+  token = strtok(durationString.begin(), ",");
+  while (token != NULL) {
+    duration_note[i++] = atoi(token);
+    token = strtok(NULL, ",");
+  }
+
+  
+  i = 0;
+  token = strtok(numString.begin(), ",");
+  while (token != NULL) {
+    num_notes[i++] = atoi(token);
+    token = strtok(NULL, ",");
+  }
+
+  // Output the values
+  Serial.print("Song: ");
+  Serial.println(song);
+  Serial.print("Count: ");
+  Serial.println(count_note);
+  Serial.print("Notes: ");
+  for (int i = 0; i < 200; i++) { // Assuming a maximum of 4 notes
+    Serial.print(notes[i]);
+    Serial.print(", ");
+  }
+  Serial.println();
+  Serial.print("Duration: ");
+  for (int i = 0; i < 200; i++) { // Assuming a maximum of 2 durations
+    Serial.print(duration_note[i]);
+    Serial.print(", ");
+  }
+  Serial.println();
+  Serial.print("Num: ");
+  for (int i = 0; i < 200; i++) { // Assuming a maximum of 3 numbers
+    Serial.print(num_notes[i]);
+    Serial.print(", ");
+  }
+  Serial.println();
+
+}
+
+
+void split_song_names(String payload){
+  char* token; // Pointer to hold each token
+
+  // Convert the payload string to a character array
+  char payloadArray[payload.length() + 1];
+  payload.toCharArray(payloadArray, payload.length() + 1);
+
+  // Initialize song count
+  int songCount = 0;
+
+  // Split the payload by '/'
+  token = strtok(payloadArray, "/");
+  
+  // Parse each token until reaching the maximum number of songs or the end of the payload
+  while (token != NULL && songCount < NumSongsTotal) {
+    // Store the song name in the array
+    SongNames[songCount++] = String(token);
+    // Get the next token
+    token = strtok(NULL, "/");
+  }
+  Serial.println("Song names: ");
+  for (int i = 0; i < 1000; i++) { // Assuming a maximum of 4 notes
+    Serial.print(SongNames[i]);
+    Serial.print(", ");
+  }
+  Serial.println(" ");
+}
+
+// https://script.google.com/macros/s/AKfycbxRAWCE3StioChkFAVhGty7HhOpmaQUy2o_HJHqLdWCUnuJZCls9yPk9l1o_CuXOQbXUA/exec?action=read&row=1
+// https://script.google.com/macros/s/AKfycbxRAWCE3StioChkFAVhGty7HhOpmaQUy2o_HJHqLdWCUnuJZCls9yPk9l1o_CuXOQbXUA/exec?action=read&row=1&name=1&notes=DO,RE&duration=500,500,500&num=2,2,2,2
+// https://script.google.com/macros/s/AKfycbxRAWCE3StioChkFAVhGty7HhOpmaQUy2o_HJHqLdWCUnuJZCls9yPk9l1o_CuXOQbXUA/exec?action=write&song=Happy&count=12&
+
+void writetoGoogleSheets(String song, int coount, String notes, String duration, String num)
+{
+  if (WiFi.status() == WL_CONNECTED) {
+
+      String url = "https://script.google.com/macros/s/" + GOOGLE_SCRIPT_ID+"/exec" ;
+      url += "?action=write";
+      url += "&song=" + song;
+      url += "&count=" + String(coount);
+      url += "&notes=" + notes;
+      url += "&duration=" + duration;
+      url += "&num=" + num;
+
+      Serial.println(url);
+      HTTPClient http;
+      http.begin(url.c_str());
+      http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+      int httpCode = http.GET(); 
+
+      String payload;
+      if (httpCode > 0) {
+          payload = http.getString();
+          Serial.println("Payload: "+ payload);    
+      }
+      http.end();
+    }
+    Serial.println("Request sent to write data to Google Sheets");
+}
+
+
+String readFromGoogleSheets(int song) {
+ if (WiFi.status() == WL_CONNECTED) {
+
+    String url = "https://script.google.com/macros/s/" + GOOGLE_SCRIPT_ID+"/exec" ;
+    url += "?action=read";
+    url += "&row=" + String(song);
+
+    HTTPClient http;
+    http.begin(url.c_str());
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    int httpCode = http.GET(); 
+    String payload;
+
+    if (httpCode > 0) { //Check for the returning code
+      payload = http.getString();
+    }
+    return payload;
+  }
+}
+
+String readNameFromGoogleSheets(int song) {
+ if (WiFi.status() == WL_CONNECTED) {
+
+    String url = "https://script.google.com/macros/s/" + GOOGLE_SCRIPT_ID+"/exec" ;
+    url += "?action=read";
+    url += "&row=" + String(song);
+    url += "&name=1";
+
+    HTTPClient http;
+    http.begin(url.c_str());
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    int httpCode = http.GET(); 
+    String payload;
+
+    if (httpCode > 0) { //Check for the returning code
+      payload = http.getString();
+    }
+    return payload;
+  }
+}
+
+String readColumnFromGoogleSheets(){
+  if (WiFi.status() == WL_CONNECTED) {
+
+    String url = "https://script.google.com/macros/s/" + GOOGLE_SCRIPT_ID+"/exec" ;
+    url += "?action=read";
+    url += "&column=1";
+
+    Serial.println(url);
+    HTTPClient http;
+    http.begin(url.c_str());
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    int httpCode = http.GET(); 
+    String payload;
+
+    if (httpCode > 0) { //Check for the returning code
+      payload = http.getString();
+    }
+    return payload;
+  }
+}
+
+
 // SET UP FUNCTIONS //
 void welcome_sound_and_led(){
   int count_rainbow=0;
@@ -1195,6 +1947,26 @@ void welcome_sound_and_led(){
   note_index=0;
 }
 
+void setup_screen(){
+  if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;); // Don't proceed, loop forever
+  }
+
+  display.display();
+  String column = readColumnFromGoogleSheets();
+  Serial.println("songs are: ");
+  Serial.println(column);
+  split_song_names(column);
+  //delay(2000);
+
+  // Clear the buffer
+  display.clearDisplay();
+  pinMode(buttonUpPin, INPUT);
+  pinMode(buttonDownPin, INPUT);
+  pinMode(buttonSelectPin, INPUT);
+  pinMode(buttonReturnPin, INPUT);
+}
 
 void setup_sound(){
   // SET UP FOR THE SOUND 
