@@ -173,6 +173,7 @@ void setup() {
   setup_screen();
   
   //Welcome sound and led
+  
   welcome_sound_and_led();
 }
 
@@ -204,11 +205,14 @@ void start_game() {
   }
 
   if(mode== FREE_MODE) {
+      Serial.println("FREE mode");
       free_playing();
       return;
   }
 
   if (mode== RECORD_MODE){
+    Serial.println("RECORD mode");
+
     notes_TOADD= ""; 
     duration_note_TOADD = ""; 
     num_notes_TOADD = ""; 
@@ -345,114 +349,116 @@ void turnOff_son_note(String note){
 
 //FREE PLAYING FUNCTION
 void free_playing(){
-  
-  if (checkReturnButton()==1)
-  {
-    return; 
-  } 
-  
-  //turn on if touched 
-  currtouched = cap.touched();
-  if ((currtouched & _BV(DO1_TouchPin))){
+  Serial.println("into free playing ");
 
-    ledcWrite(DO1_CHANNEL, 128); 
-    pixels.setPixelColor(DO1_PIXEL, pixels.Color(255, 255, 255));
-    pixels.show();
-  }
+  while (1){
+    if (checkReturnButton()==1)
+    {
+      return; 
+    } 
+    //turn on if touched 
+    currtouched = cap.touched();
+    if ((currtouched & _BV(DO1_TouchPin))){
 
-  if ((currtouched & _BV(RE_TouchPin))){
-    //Serial.println("RE IS touched");
+      ledcWrite(DO1_CHANNEL, 128); 
+      pixels.setPixelColor(DO1_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();
+    }
 
-    ledcWrite(RE_CHANNEL, 128); 
-    pixels.setPixelColor(RE_PIXEL, pixels.Color(255, 255, 255));
-    pixels.show();
-  }
+    if ((currtouched & _BV(RE_TouchPin))){
+      //Serial.println("RE IS touched");
 
-  if ((currtouched & _BV(MI_TouchPin))){
-    ledcWrite(MI_CHANNEL, 128); 
-    pixels.setPixelColor(MI_PIXEL, pixels.Color(255, 255, 255));
-    pixels.show();
-  }
+      ledcWrite(RE_CHANNEL, 128); 
+      pixels.setPixelColor(RE_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();
+    }
 
-  if ((currtouched & _BV(FA_TouchPin))){
-    ledcWrite(FA_CHANNEL, 128); 
-    pixels.setPixelColor(FA_PIXEL, pixels.Color(255, 255, 255));
-    pixels.show();
+    if ((currtouched & _BV(MI_TouchPin))){
+      ledcWrite(MI_CHANNEL, 128); 
+      pixels.setPixelColor(MI_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();
+    }
 
-  }
+    if ((currtouched & _BV(FA_TouchPin))){
+      ledcWrite(FA_CHANNEL, 128); 
+      pixels.setPixelColor(FA_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();
 
-  if ((currtouched & _BV(SOL_TouchPin))){
-    ledcWrite(SOL_CHANNEL, 128); 
-    pixels.setPixelColor(SOL_PIXEL, pixels.Color(255, 255, 255));
-    pixels.show();
-  }
+    }
 
-  if ((currtouched & _BV(LA_TouchPin))){
-    ledcWrite(LA_CHANNEL, 128); 
-    pixels.setPixelColor(LA_PIXEL, pixels.Color(255, 255, 255));
-    pixels.show();
-  }
+    if ((currtouched & _BV(SOL_TouchPin))){
+      ledcWrite(SOL_CHANNEL, 128); 
+      pixels.setPixelColor(SOL_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();
+    }
 
-  if ((currtouched & _BV(SI_TouchPin))){
-    ledcWrite(SI_CHANNEL, 128); 
-    pixels.setPixelColor(SI_PIXEL, pixels.Color(255, 255, 255));
-    pixels.show();
-  }
+    if ((currtouched & _BV(LA_TouchPin))){
+      ledcWrite(LA_CHANNEL, 128); 
+      pixels.setPixelColor(LA_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();
+    }
 
-  if ((currtouched & _BV(DO2_TouchPin))){
-    ledcWrite(DO2_CHANNEL, 128); 
-    pixels.setPixelColor(DO2_PIXEL, pixels.Color(255, 255, 255));
-    pixels.show();
-  }
+    if ((currtouched & _BV(SI_TouchPin))){
+      ledcWrite(SI_CHANNEL, 128); 
+      pixels.setPixelColor(SI_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();
+    }
+
+    if ((currtouched & _BV(DO2_TouchPin))){
+      ledcWrite(DO2_CHANNEL, 128); 
+      pixels.setPixelColor(DO2_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();
+    }
 
 
-  //turn off if released
-  if (!(currtouched & _BV(DO1_TouchPin))) {
-        ledcWrite(DO1_CHANNEL, 0); 
-        pixels.setPixelColor(DO1_PIXEL, pixels.Color(0, 0, 0));
-        pixels.show();
-  }
+    //turn off if released
+    if (!(currtouched & _BV(DO1_TouchPin))) {
+          ledcWrite(DO1_CHANNEL, 0); 
+          pixels.setPixelColor(DO1_PIXEL, pixels.Color(0, 0, 0));
+          pixels.show();
+    }
 
-  if (!(currtouched & _BV(RE_TouchPin))) {
-        ledcWrite(RE_CHANNEL, 0); 
-        pixels.setPixelColor(RE_PIXEL, pixels.Color(0, 0, 0));
-        pixels.show();
-  }
+    if (!(currtouched & _BV(RE_TouchPin))) {
+          ledcWrite(RE_CHANNEL, 0); 
+          pixels.setPixelColor(RE_PIXEL, pixels.Color(0, 0, 0));
+          pixels.show();
+    }
 
-  if (!(currtouched & _BV(MI_TouchPin))) {
-        ledcWrite(MI_CHANNEL, 0); 
-        pixels.setPixelColor(MI_PIXEL, pixels.Color(0, 0, 0));
-        pixels.show();
-  }
+    if (!(currtouched & _BV(MI_TouchPin))) {
+          ledcWrite(MI_CHANNEL, 0); 
+          pixels.setPixelColor(MI_PIXEL, pixels.Color(0, 0, 0));
+          pixels.show();
+    }
 
-  if (!(currtouched & _BV(FA_TouchPin))) {
-        ledcWrite(FA_CHANNEL, 0); 
-        pixels.setPixelColor(FA_PIXEL, pixels.Color(0, 0, 0));
-        pixels.show();
-  }
+    if (!(currtouched & _BV(FA_TouchPin))) {
+          ledcWrite(FA_CHANNEL, 0); 
+          pixels.setPixelColor(FA_PIXEL, pixels.Color(0, 0, 0));
+          pixels.show();
+    }
 
-  if (!(currtouched & _BV(SOL_TouchPin))) {
-        ledcWrite(SOL_CHANNEL, 0); 
-        pixels.setPixelColor(SOL_PIXEL, pixels.Color(0, 0, 0));
-        pixels.show();
-  }
+    if (!(currtouched & _BV(SOL_TouchPin))) {
+          ledcWrite(SOL_CHANNEL, 0); 
+          pixels.setPixelColor(SOL_PIXEL, pixels.Color(0, 0, 0));
+          pixels.show();
+    }
 
-  if (!(currtouched & _BV(LA_TouchPin))) {
-        ledcWrite(LA_CHANNEL, 0); 
-        pixels.setPixelColor(LA_PIXEL, pixels.Color(0, 0, 0));
-        pixels.show();
-  }
+    if (!(currtouched & _BV(LA_TouchPin))) {
+          ledcWrite(LA_CHANNEL, 0); 
+          pixels.setPixelColor(LA_PIXEL, pixels.Color(0, 0, 0));
+          pixels.show();
+    }
 
-  if (!(currtouched & _BV(SI_TouchPin))) {
-        ledcWrite(SI_CHANNEL, 0); 
-        pixels.setPixelColor(SI_PIXEL, pixels.Color(0, 0, 0));
-        pixels.show();
-  }
+    if (!(currtouched & _BV(SI_TouchPin))) {
+          ledcWrite(SI_CHANNEL, 0); 
+          pixels.setPixelColor(SI_PIXEL, pixels.Color(0, 0, 0));
+          pixels.show();
+    }
 
-  if (!(currtouched & _BV(DO2_TouchPin))) {
-        ledcWrite(DO2_CHANNEL, 0); 
-        pixels.setPixelColor(DO2_PIXEL, pixels.Color(0, 0, 0));
-        pixels.show();
+    if (!(currtouched & _BV(DO2_TouchPin))) {
+          ledcWrite(DO2_CHANNEL, 0); 
+          pixels.setPixelColor(DO2_PIXEL, pixels.Color(0, 0, 0));
+          pixels.show();
+    }
   }
 }
 
@@ -1383,9 +1389,10 @@ void record_mode(){
   int first_touched=1;
   String note_played = "DO1";
   unsigned long time_played = millis();
+  delay(500);
   buttonSelectState = digitalRead(buttonSelectPin);
 
-  while (buttonSelectState()!=HIGH){
+  while (buttonSelectState!=HIGH){
     currtouched = cap.touched();
     buttonSelectState = digitalRead(buttonSelectPin);
 
@@ -1394,14 +1401,14 @@ void record_mode(){
       return;
     }
 
-    record_mode_note("DO1",  DO1_CHANNEL, DO1_PIXEL, DO1_TOUCH_PIN); 
-    record_mode_note("RE",  RE_CHANNEL, RE_PIXEL, RE_TOUCH_PIN); 
-    record_mode_note("MI",  MI_CHANNEL, MI_PIXEL, MI_TOUCH_PIN); 
-    record_mode_note("FA",  FA_CHANNEL, FA_PIXEL, FA_TOUCH_PIN); 
-    record_mode_note("SOL",  SOL_CHANNEL, SOL_PIXEL, SOL_TOUCH_PIN); 
-    record_mode_note("LA",  LA_CHANNEL, LA_PIXEL, LA_TOUCH_PIN); 
-    record_mode_note("SI",  SI_CHANNEL, SI_PIXEL, SI_TOUCH_PIN); 
-    record_mode_note("DO2",  DO2_CHANNEL, DO2_PIXEL, DO2_TOUCH_PIN); 
+    record_mode_note("DO1",  DO1_CHANNEL, DO1_PIXEL, DO1_TouchPin); 
+    record_mode_note("RE",  RE_CHANNEL, RE_PIXEL, RE_TouchPin); 
+    record_mode_note("MI",  MI_CHANNEL, MI_PIXEL, MI_TouchPin); 
+    record_mode_note("FA",  FA_CHANNEL, FA_PIXEL, FA_TouchPin); 
+    record_mode_note("SOL",  SOL_CHANNEL, SOL_PIXEL, SOL_TouchPin); 
+    record_mode_note("LA",  LA_CHANNEL, LA_PIXEL, LA_TouchPin); 
+    record_mode_note("SI",  SI_CHANNEL, SI_PIXEL, SI_TouchPin); 
+    record_mode_note("DO2",  DO2_CHANNEL, DO2_PIXEL, DO2_TouchPin); 
 
   }
   
@@ -1457,7 +1464,7 @@ void menu_mode(){
     buttonUpState = digitalRead(buttonUpPin);
     buttonDownState = digitalRead(buttonDownPin);
     buttonSelectState = digitalRead(buttonSelectPin);
-
+    
     // UP 
     if (buttonUpState == HIGH) {
       if (mode!=1){
@@ -1478,6 +1485,8 @@ void menu_mode(){
     if (buttonSelectState == HIGH) {
       //mode number (1,2,3,4,5) is in "mode" variable
       Serial.print("Selected mode ");
+      buttonReturnState = digitalRead(buttonReturnPin);
+
       Serial.println(mode);
       if (mode==FREE_MODE){
         display.clearDisplay();
@@ -1486,6 +1495,11 @@ void menu_mode(){
         display.setTextColor(SSD1306_WHITE);
         display.println(F("Let's play!!"));
         display.display();
+        start_game();
+        returnValue=0;
+        mode=1;
+      }
+      else if (mode==RECORD_MODE){
         start_game();
         returnValue=0;
         mode=1;
@@ -1991,6 +2005,14 @@ void turnOffAllSounds()
 
 // SET UP FUNCTIONS //
 void welcome_sound_and_led(){
+  display.clearDisplay();
+  display.setTextSize(2);                     
+  display.setTextColor(SSD1306_WHITE); 
+  display.setCursor(0,0); 
+  display.println(F("WELCOME TO"));
+  display.println(F("pIanOT"));
+  display.display();
+
   int count_rainbow=0;
   String note = "None";
   note_index=0;
