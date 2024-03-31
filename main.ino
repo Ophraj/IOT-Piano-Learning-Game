@@ -124,6 +124,11 @@ String notes[200]; // Assuming a maximum of 200 notes
 int duration_note[200]; // Assuming a maximum of 200 durations
 int num_notes[200]; // Assuming a maximum of 200 numbers
 
+String notes_TOADD; 
+String duration_note_TOADD; 
+String num_notes_TOADD; 
+int count_TOADD=0;
+
 String SongNames[1000];
 int NumSongsTotal = 3;
 int mode = 1;
@@ -141,7 +146,6 @@ int returnValue=0;
 uint32_t note_index = 0;
 uint32_t num_note_index = 0;
 
-
 // Stats variables
 int errors_count = 0;
 unsigned long start_time = 0;
@@ -150,14 +154,6 @@ unsigned long duration_total = 0;
 
 void setup() {
   Serial.begin(115200);
-  
-  // SET UP FOR GOOGLE SHEET 
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
 
   //set up touch
   setup_mpr121();
@@ -173,7 +169,7 @@ void setup() {
   // SET UP FOR THE SOUND 
   setup_sound();
 
-  // SET UP FOR SCREEN 
+  // SET UP FOR SCREEN and google sheet
   setup_screen();
   
   //Welcome sound and led
@@ -187,10 +183,23 @@ void loop() {
 
 void start_game() {
   note_index=0;
+  num_note_index=0;
+  errors_count=0;
+  duration_total=0;
   Serial.println("Starting game");
 
   if (mode == EASY_MODE){
     easy_mode();
+    return;
+  }
+
+  if (mode== MEDIUM_MODE){
+    medium_and_advanced_mode();
+    return;
+  }
+
+  if (mode == ADVANCED_MODE){
+    medium_and_advanced_mode();
     return;
   }
 
@@ -199,21 +208,27 @@ void start_game() {
       return;
   }
 
-  if (mode== MEDIUM_MODE){
-    medium_mode();
-    return;
-  }
+  if (mode== RECORD_MODE){
+    notes_TOADD= ""; 
+    duration_note_TOADD = ""; 
+    num_notes_TOADD = ""; 
+    count_TOADD=0;
 
-  /*if (mode== RECORD_MODE){
+    String name_TOADD = "SongAdded" + String(NumSongsTotal);
+    display.clearDisplay();
+    display.setCursor(0,0); 
+    display.setTextSize(1);            
+    display.setTextColor(SSD1306_WHITE);
+
+    display.println(F("Record Mode"));
+    display.print(F("Name of the song is: "));
+    display.println(name_TOADD);
+    display.println(F("To validate press SELECT (green button)"));
+    display.display();
+
     record_mode();
     return;
-  }*/
-
-  if (mode == ADVANCED_MODE){
-    advanced_mode();
-    return;
   }
-  returnValue=1;
 }
 
 // PLAY THE SONG
@@ -228,6 +243,11 @@ void play_song(){
   unsigned long end = millis();
   while (end-start<time)
   {
+    Serial.println("play song check return");
+    if (checkReturnButton()==1)
+    {
+      return; 
+    }
     end = millis();
     dc = 128;
     light_led_note(note); 
@@ -236,15 +256,26 @@ void play_song(){
 
   turnOff_son_note(note);
   pixels.clear();
-  pixels.show();  
+  pixels.show();
+  if (checkReturnButton()==1)
+    {
+      return; 
+    }  
   note_index++;
   delay(10);
   }
+
+  //song played 
   delay(1000);
 }
 
 // turn on sound according to the note
 void turnOn_son_note(String note){
+
+  if (checkReturnButton()==1)
+  {
+    return; 
+  }
 
   if (note=="None"){
     return;
@@ -306,10 +337,20 @@ void turnOff_son_note(String note){
    if (note=="DO2"){
       ledcWrite(DO2_CHANNEL, 0); 
   }
+  if (checkReturnButton()==1)
+  {
+    return; 
+  } 
 }
 
 //FREE PLAYING FUNCTION
 void free_playing(){
+  
+  if (checkReturnButton()==1)
+  {
+    return; 
+  } 
+  
   //turn on if touched 
   currtouched = cap.touched();
   if ((currtouched & _BV(DO1_TouchPin))){
@@ -421,12 +462,19 @@ void easy_mode(){
 
   // choose_song();
   play_song();
+  if (returnValue==1)
+  {
+    return; 
+  } 
   note_index=0;
 
   // Pass on every notes
   while (note_index<count_note) {
     //Serial.println(note_index);
-    
+    if (checkReturnButton()==1)
+    {
+      return; 
+    } 
     // GET THE NEXT NOTE 
     String note = notes[note_index];
     int time = duration_note[note_index];
@@ -436,10 +484,15 @@ void easy_mode(){
       
    // TURN ON THE CORRESPONDING LED
     light_led_note(note);
-
+    if (returnValue==1){
+      return;
+    }
   // WAIT FOR THE TOUCH AND WHEN TOUCHED MAKE THE SOUND
     start_time = millis();
     play_one_key_note(note);
+    if (returnValue==1){
+      return;
+    }
     touch_time= millis();
     duration_total += (touch_time-start_time);
 
@@ -471,6 +524,7 @@ void easy_mode(){
   Serial.println(duration_average);
   note_index=0;
   errors_count=0;
+  checkReturnButton();
 }
 
 
@@ -525,11 +579,14 @@ void play_one_key_params(String note, int touch_pin, int channel, int pixel){
     
     unsigned long start_play = 0;
     unsigned long time_played = 0;
-    Serial.println("note is " + note + " and pin " + touch_pin);
 
     // wait for touch
     while (!(currtouched & _BV(touch_pin))){
       currtouched = cap.touched();
+      if (checkReturnButton()==1)
+      {
+        return; 
+      } 
       if ((currtouched)){
         // RIGHT PIN TOUCHED
         if ((currtouched & _BV(touch_pin))){
@@ -540,11 +597,17 @@ void play_one_key_params(String note, int touch_pin, int channel, int pixel){
         else {
             if (mode==EASY_MODE){
               error_touch(); // show 3 times red lights
+              if (returnValue==1){
+                return;
+              }
               light_led_note(note); //Show our note led in white again
             }
             else { //Medium and advanced
               errors_count += 1;
               false_touched_note_medium_mode(currtouched); //play the wrong key (sound and red color)
+              if (returnValue==1){
+                return;
+              }
             }
             continue;
         }
@@ -559,6 +622,12 @@ void play_one_key_params(String note, int touch_pin, int channel, int pixel){
 
     // wait for release
     while(1){
+      
+      if (checkReturnButton()==1)
+      {
+        return; 
+      }
+
       time_played = millis()-start_play;
       Serial.print("time played : ");
       Serial.println(time_played);
@@ -624,21 +693,33 @@ void play_one_key_params(String note, int touch_pin, int channel, int pixel){
       }
     }
 
+    checkReturnButton();
     return;
 }
-
 
 // show all red leds 3 times and add one to errors_count
 void error_touch(){
   for(int j=0; j<3; j++) { 
       for(int i=0; i<NUMPIXELS; i++) { 
           pixels.setPixelColor(i, pixels.Color(255, 0, 0));     //light in red 3 times  
-          pixels.show();                           
+          pixels.show();
+          if (checkReturnButton()==1)
+          {
+            return; 
+          }                          
       }
-      delay(300);                           
+      delay(300);
+      if (checkReturnButton()==1)
+      {
+        return; 
+      }                            
       pixels.clear();
       pixels.show();
-      delay(300);                           
+      delay(300); 
+      if (checkReturnButton()==1)
+      {
+        return; 
+      }                          
   }
   errors_count += 1;
   return;
@@ -647,6 +728,10 @@ void error_touch(){
 // light the led according to the note in white
 void light_led_note(String note){
 
+  if (checkReturnButton()==1)
+  {
+    return; 
+  }
   if (note=="None"){
     return;
   }
@@ -687,77 +772,13 @@ void light_led_note(String note){
 }
 
 
-// MEDIUM MODE FUNCTIONS 
-void medium_mode(){
-  Serial.println("You are in medium mode");
-
-  //play_song();
-  note_index=0;
-  while (note_index<count_note) {
-     
-    int num_note = num_notes[note_index]; // How many notes in the same time
-
-    // if one note 
-    if (num_note==1){
-
-      // GET THE NOTE
-      String note = notes[note_index];
-      int time = duration_note[note_index];
-      // LIGHT THE LED
-      light_led_note(note);
-
-      // LET PLAYER PLAY THE KEY
-      start_time = millis();
-      play_one_key_note(note);
-      touch_time= millis();
-      duration_total += (touch_time-start_time);
-
-      // TURN OFF THE LED
-      //Serial.println("turn off pixels");
-      pixels.clear();
-      pixels.show();  
-      note_index+=1;
-      continue;
-    }
-
-    // if two notes 
-    if (num_note==2){
-      Serial.println("There are 2 notes");
-
-      //first note
-      String note1 = notes[note_index];
-      int time1 = duration_note[note_index];
-      note_index++;
-      
-      //second note
-      String note2 = notes[note_index];
-      int time2 = duration_note[note_index];
-      Serial.println(note1);
-      Serial.println(note2);
-
-      // light notes in white
-      light_led_note(note1);
-      light_led_note(note2);
-
-      // LET THE PLAYER PLAY THE 2 NOTES
-      start_time = millis();
-      play_two_keys_notes(note1, note2);
-      touch_time= millis();
-      duration_total += (touch_time-start_time);
-
-      // TURN OFF THE LED
-      pixels.clear();
-      pixels.show();  
-      note_index+=1;
-      continue;
-    }
-  }
-}
-
-
 // CALL TO FUNCTION TO PLAY THE 2 KEYS WITH THE RIGHT PARAMETERS 
 void play_two_keys_notes(String note1, String note2){
 
+   if (checkReturnButton()==1)
+  {
+    return; 
+  }
   // DEFINE NOTE 1 PARAMETERS
   int touchpin1 = DO1_TouchPin;
   int channel1 = DO1_CHANNEL;
@@ -862,7 +883,6 @@ void play_two_keys_notes(String note1, String note2){
 // to play 2 keys 
 // wait for the 2 keys to be played, play sound if touched, alert error if error 
 void play_two_keys_params(int touch_pin1, int channel1, int pixel1, int touch_pin2, int channel2, int pixel2){
-  currtouched = cap.touched();
   int first_touched=0;
   int second_touched=0;
   int two_notes_touched=0;
@@ -871,6 +891,10 @@ void play_two_keys_params(int touch_pin1, int channel1, int pixel1, int touch_pi
 
   while (two_notes_touched==0){
     currtouched = cap.touched();
+    if (checkReturnButton()==1)
+    {
+      return; 
+    }
     // if two notes are touched, break
     if (first_touched==1 && second_touched==1){
       two_notes_touched=1;
@@ -880,9 +904,7 @@ void play_two_keys_params(int touch_pin1, int channel1, int pixel1, int touch_pi
 
     //if first note is touched ==> light on the sound and turn led green 
     if (currtouched & _BV(touch_pin1)){
-      //Serial.println("1 is touched ");
-
-      // start chrono to check if touched in the same time
+      // start chrono to check if touched around the same time
       if (second_touched==0 && first_touched==0){
         start_firt_touch = millis();
       }
@@ -893,7 +915,7 @@ void play_two_keys_params(int touch_pin1, int channel1, int pixel1, int touch_pi
       pixels.show();
     }
 
-    // if first note was touched and is now released turn off sound (can happen 0.5 secs)
+    // if first note was touched and is now released turn off sound (can happen 0.3 secs)
     if (!(currtouched & _BV(touch_pin1)) && first_touched==1){
       first_touched=0;
       ledcWrite(channel1, 0); 
@@ -903,9 +925,8 @@ void play_two_keys_params(int touch_pin1, int channel1, int pixel1, int touch_pi
 
     //if second note is touched ==> light on the sound and led green
     if (currtouched & _BV(touch_pin2)){
-      //Serial.println("2 is touched ");
 
-      // start chrono to check if touched in the same time
+      // start chrono to check if touched around the same time
       if (second_touched==0 && first_touched==0){
         start_firt_touch = millis();
       }
@@ -928,7 +949,10 @@ void play_two_keys_params(int touch_pin1, int channel1, int pixel1, int touch_pi
         ledcWrite(channel2, 0); 
         ledcWrite(channel1, 0); 
         false_touched_note_medium_mode(currtouched); // turn in red and make sound
-        //error_touch(); //LIGHT IN RED
+        if (returnValue==1)
+        {
+          return;
+        }
 
         // turn on leds on white
         pixels.setPixelColor(pixel1, pixels.Color(255, 255, 255));
@@ -949,7 +973,10 @@ void play_two_keys_params(int touch_pin1, int channel1, int pixel1, int touch_pi
         ledcWrite(channel2, 0); 
         ledcWrite(channel1, 0); 
         false_touched_note_medium_mode(currtouched); // play the wrong touched note + red led
-
+        if (returnValue==1)
+        {
+          return;
+        }
         // turn on leds on white 
         pixels.setPixelColor(pixel1, pixels.Color(255, 255, 255));
         pixels.setPixelColor(pixel2, pixels.Color(255, 255, 255));
@@ -974,7 +1001,10 @@ void play_two_keys_params(int touch_pin1, int channel1, int pixel1, int touch_pi
         ledcWrite(channel2, 0); 
         ledcWrite(channel1, 0);
         error_touch(); //LIGHT IN RED and add error
-
+        if (returnValue==1)
+        {
+          return;
+        }
         //turn on leds on white
         pixels.setPixelColor(pixel1, pixels.Color(255, 255, 255));
         pixels.setPixelColor(pixel2, pixels.Color(255, 255, 255));
@@ -1001,16 +1031,15 @@ void play_two_keys_params(int touch_pin1, int channel1, int pixel1, int touch_pi
   while(1){
     currtouched = cap.touched();
     time_played = millis()-start_both_touched;
-
+    if (checkReturnButton()==1)
+    {
+      return; 
+    }
     // if mode advanced, color code
     if (mode==ADVANCED_MODE)
     {
       // if less than 100 ms until the end of the duration expected => warn with yellow light
       if (duration_note[note_index]>time_played){
-        
-        /*Serial.print("you still need to play: ");
-        Serial.print(duration_note[note_index]-time_played);
-        Serial.println(" ms ");*/
 
         if (duration_note[note_index]-time_played < 250)
         {
@@ -1024,10 +1053,6 @@ void play_two_keys_params(int touch_pin1, int channel1, int pixel1, int touch_pi
       // if played more the duration expected but less than 100ms => light orange light 
       if (duration_note[note_index]<=time_played){
 
-        /*Serial.print("You have played too much by: ");
-        Serial.print(time_played-duration_note[note_index]);
-        Serial.println(" ms ");*/
-
         if (time_played-duration_note[note_index] < 300)
         {
           //Serial.println("show orange ");
@@ -1039,8 +1064,6 @@ void play_two_keys_params(int touch_pin1, int channel1, int pixel1, int touch_pi
 
         if (time_played-duration_note[note_index] >= 300)
         {
-
-          //Serial.println("show red ");
           pixels.setPixelColor(pixel1, pixels.Color(255,0,0)); //  red
           pixels.setPixelColor(pixel2, pixels.Color(255,0,0)); // red
 
@@ -1107,6 +1130,7 @@ void play_two_keys_params(int touch_pin1, int channel1, int pixel1, int touch_pi
       }
     }
   }
+  checkReturnButton();
 }
 
 // Check if a pin was falsly touched 
@@ -1127,6 +1151,10 @@ void false_touched_note_medium_mode(uint32_t currtouched){
     
     while (currtouched & _BV(DO1_TouchPin)){
       //light in red and make sound
+      if (checkReturnButton()==1)
+      {
+        return; 
+      }
       pixels.setPixelColor(DO1_PIXEL, pixels.Color(255, 0, 0));
       pixels.show();
       ledcWrite(DO1_CHANNEL, 128);
@@ -1141,6 +1169,10 @@ void false_touched_note_medium_mode(uint32_t currtouched){
     }
 
     while (currtouched & _BV(RE_TouchPin)){
+      if (checkReturnButton()==1)
+      {
+        return; 
+      }
       pixels.setPixelColor(RE_PIXEL, pixels.Color(255, 0, 0));
       pixels.show();
       ledcWrite(RE_CHANNEL, 128);
@@ -1154,6 +1186,10 @@ void false_touched_note_medium_mode(uint32_t currtouched){
     }
 
     while (currtouched & _BV(MI_TouchPin)){
+      if (checkReturnButton()==1)
+      {
+        return; 
+      }
       pixels.setPixelColor(MI_PIXEL, pixels.Color(255, 0, 0));
       pixels.show();
       ledcWrite(MI_CHANNEL, 128);
@@ -1167,6 +1203,10 @@ void false_touched_note_medium_mode(uint32_t currtouched){
     }
 
     while (currtouched & _BV(FA_TouchPin)){
+      if (checkReturnButton()==1)
+      {
+        return; 
+      }
       pixels.setPixelColor(FA_PIXEL, pixels.Color(255, 0, 0));
       pixels.show();
       ledcWrite(FA_CHANNEL, 128);
@@ -1180,6 +1220,10 @@ void false_touched_note_medium_mode(uint32_t currtouched){
     }
 
     while (currtouched & _BV(SOL_TouchPin)){
+      if (checkReturnButton()==1)
+      {
+        return; 
+      }
       pixels.setPixelColor(SOL_PIXEL, pixels.Color(255, 0, 0));
       pixels.show();
       ledcWrite(SOL_CHANNEL, 128);
@@ -1193,6 +1237,10 @@ void false_touched_note_medium_mode(uint32_t currtouched){
     }
 
     while (currtouched & _BV(LA_TouchPin)){
+      if (checkReturnButton()==1)
+      {
+        return; 
+      }
       pixels.setPixelColor(LA_PIXEL, pixels.Color(255, 0, 0));
       pixels.show();
       ledcWrite(LA_CHANNEL, 128);
@@ -1206,6 +1254,10 @@ void false_touched_note_medium_mode(uint32_t currtouched){
     }
 
     while (currtouched & _BV(SI_TouchPin)){
+      if (checkReturnButton()==1)
+      {
+        return; 
+      }
       pixels.setPixelColor(SI_PIXEL, pixels.Color(255, 0, 0));
       pixels.show();
       ledcWrite(SI_CHANNEL, 128);
@@ -1219,6 +1271,10 @@ void false_touched_note_medium_mode(uint32_t currtouched){
     }
 
     while (currtouched & _BV(DO2_TouchPin)){
+      if (checkReturnButton()==1)
+      {
+        return; 
+      }
       pixels.setPixelColor(DO2_PIXEL, pixels.Color(255, 0, 0));
       pixels.show();
       ledcWrite(DO2_CHANNEL, 128);
@@ -1234,15 +1290,23 @@ void false_touched_note_medium_mode(uint32_t currtouched){
 
 
 // ADVANCED MODE 
-void advanced_mode(){
+void medium_and_advanced_mode(){
   Serial.println("advanced mode");
   
-  //play_song();
+  play_song();
+  if(returnValue==1)
+  {
+    return;
+  }
   num_note_index=0;
   note_index=0;
   while (note_index<count_note) {
-     Serial.print("note index is ");
-     Serial.println(note_index);
+    if (checkReturnButton()==1)
+      {
+        return; 
+      }
+    Serial.print("note index is ");
+    Serial.println(note_index);
     int num_note = num_notes[num_note_index]; // How many notes in the same time
     num_note_index+=1;
     Serial.println("num notes is ");
@@ -1260,11 +1324,14 @@ void advanced_mode(){
       // LET PLAYER PLAY THE KEY
       start_time = millis();
       play_one_key_note(note);
+      if(returnValue==1)
+      {
+        return;
+      }
       touch_time= millis();
       duration_total += (touch_time-start_time);
 
       // TURN OFF THE LED
-      //Serial.println("turn off pixels");
       pixels.clear();
       pixels.show();  
       note_index+=1;
@@ -1293,6 +1360,10 @@ void advanced_mode(){
       // LET THE PLAYER PLAY THE 2 NOTES
       start_time = millis();
       play_two_keys_notes(note1, note2);
+      if (returnValue==1)
+      {
+        return;
+      }
       touch_time= millis();
       duration_total += (touch_time-start_time);
 
@@ -1303,122 +1374,78 @@ void advanced_mode(){
       continue;
     }
   }
+  checkReturnButton();
 }
 
 // RECORD MODE 
-/*void record_mode(){
-  unsigned long last_time_touched = millis();
+void record_mode(){
+  unsigned long start_note = millis();
+  int first_touched=1;
+  String note_played = "DO1";
+  unsigned long time_played = millis();
+  buttonSelectState = digitalRead(buttonSelectPin);
 
-  while (millis()-last_time_touched<3000){
+  while (buttonSelectState()!=HIGH){
     currtouched = cap.touched();
-    
-    // note is touched 
-    if ((currtouched & _BV(DO1_TouchPin))){
+    buttonSelectState = digitalRead(buttonSelectPin);
 
-      ledcWrite(DO1_CHANNEL, 128); 
-      pixels.setPixelColor(DO1_PIXEL, pixels.Color(255, 255, 255));
+    if (checkReturnButton()==1)
+    {
+      return;
+    }
+
+    record_mode_note("DO1",  DO1_CHANNEL, DO1_PIXEL, DO1_TOUCH_PIN); 
+    record_mode_note("RE",  RE_CHANNEL, RE_PIXEL, RE_TOUCH_PIN); 
+    record_mode_note("MI",  MI_CHANNEL, MI_PIXEL, MI_TOUCH_PIN); 
+    record_mode_note("FA",  FA_CHANNEL, FA_PIXEL, FA_TOUCH_PIN); 
+    record_mode_note("SOL",  SOL_CHANNEL, SOL_PIXEL, SOL_TOUCH_PIN); 
+    record_mode_note("LA",  LA_CHANNEL, LA_PIXEL, LA_TOUCH_PIN); 
+    record_mode_note("SI",  SI_CHANNEL, SI_PIXEL, SI_TOUCH_PIN); 
+    record_mode_note("DO2",  DO2_CHANNEL, DO2_PIXEL, DO2_TOUCH_PIN); 
+
+  }
+  
+  if (returnValue==1)
+  {
+    return;
+  }
+  String name_TOADD = "SongAdded" + String(NumSongsTotal);
+  writetoGoogleSheets(name_TOADD, count_TOADD, notes_TOADD, duration_note_TOADD, num_notes_TOADD);
+  NumSongsTotal+=1;
+}
+
+
+void record_mode_note(String note_played, int channel, int pixel_pin, int touch_pin){
+  currtouched = cap.touched();
+  unsigned long start_note = millis();
+
+  while ((currtouched & _BV(touch_pin))){
+    currtouched = cap.touched();
+
+    ledcWrite(channel, 128); 
+    pixels.setPixelColor(pixel_pin, pixels.Color(255, 255, 255));
+    pixels.show();
+
+    if (!(currtouched & _BV(touch_pin))) { //released
+      ledcWrite(channel, 0); 
+      pixels.setPixelColor(pixel_pin, pixels.Color(0, 0, 0));
       pixels.show();
 
-      
-    }
+      unsigned long time_played=millis()-start_note;
 
-    if ((currtouched & _BV(RE_TouchPin))){
-      //Serial.println("RE IS touched");
+      // Adding the infos to the "arrays" (strings to googlesheet)
+      notes_TOADD += note_played;
+      notes_TOADD += ",";
 
-      ledcWrite(RE_CHANNEL, 128); 
-      pixels.setPixelColor(RE_PIXEL, pixels.Color(255, 255, 255));
-      pixels.show();
-    }
+      duration_note_TOADD += String(time_played); 
+      duration_note_TOADD += ","; 
 
-    if ((currtouched & _BV(MI_TouchPin))){
-      ledcWrite(MI_CHANNEL, 128); 
-      pixels.setPixelColor(MI_PIXEL, pixels.Color(255, 255, 255));
-      pixels.show();
-    }
-
-    if ((currtouched & _BV(FA_TouchPin))){
-      ledcWrite(FA_CHANNEL, 128); 
-      pixels.setPixelColor(FA_PIXEL, pixels.Color(255, 255, 255));
-      pixels.show();
-
-    }
-
-    if ((currtouched & _BV(SOL_TouchPin))){
-      ledcWrite(SOL_CHANNEL, 128); 
-      pixels.setPixelColor(SOL_PIXEL, pixels.Color(255, 255, 255));
-      pixels.show();
-    }
-
-    if ((currtouched & _BV(LA_TouchPin))){
-      ledcWrite(LA_CHANNEL, 128); 
-      pixels.setPixelColor(LA_PIXEL, pixels.Color(255, 255, 255));
-      pixels.show();
-    }
-
-    if ((currtouched & _BV(SI_TouchPin))){
-      ledcWrite(SI_CHANNEL, 128); 
-      pixels.setPixelColor(SI_PIXEL, pixels.Color(255, 255, 255));
-      pixels.show();
-    }
-
-    if ((currtouched & _BV(DO2_TouchPin))){
-      ledcWrite(DO2_CHANNEL, 128); 
-      pixels.setPixelColor(DO2_PIXEL, pixels.Color(255, 255, 255));
-      pixels.show();
-    }
-
-
-    //turn off if released
-    if (!(currtouched & _BV(DO1_TouchPin))) {
-          ledcWrite(DO1_CHANNEL, 0); 
-          pixels.setPixelColor(DO1_PIXEL, pixels.Color(0, 0, 0));
-          pixels.show();
-    }
-
-    if (!(currtouched & _BV(RE_TouchPin))) {
-          ledcWrite(RE_CHANNEL, 0); 
-          pixels.setPixelColor(RE_PIXEL, pixels.Color(0, 0, 0));
-          pixels.show();
-    }
-
-    if (!(currtouched & _BV(MI_TouchPin))) {
-          ledcWrite(MI_CHANNEL, 0); 
-          pixels.setPixelColor(MI_PIXEL, pixels.Color(0, 0, 0));
-          pixels.show();
-    }
-
-    if (!(currtouched & _BV(FA_TouchPin))) {
-          ledcWrite(FA_CHANNEL, 0); 
-          pixels.setPixelColor(FA_PIXEL, pixels.Color(0, 0, 0));
-          pixels.show();
-    }
-
-    if (!(currtouched & _BV(SOL_TouchPin))) {
-          ledcWrite(SOL_CHANNEL, 0); 
-          pixels.setPixelColor(SOL_PIXEL, pixels.Color(0, 0, 0));
-          pixels.show();
-    }
-
-    if (!(currtouched & _BV(LA_TouchPin))) {
-          ledcWrite(LA_CHANNEL, 0); 
-          pixels.setPixelColor(LA_PIXEL, pixels.Color(0, 0, 0));
-          pixels.show();
-    }
-
-    if (!(currtouched & _BV(SI_TouchPin))) {
-          ledcWrite(SI_CHANNEL, 0); 
-          pixels.setPixelColor(SI_PIXEL, pixels.Color(0, 0, 0));
-          pixels.show();
-    }
-
-    if (!(currtouched & _BV(DO2_TouchPin))) {
-          ledcWrite(DO2_CHANNEL, 0); 
-          pixels.setPixelColor(DO2_PIXEL, pixels.Color(0, 0, 0));
-          pixels.show();
+      num_notes_TOADD += "1,";
+      count_TOADD+=1;
+      break;
     }
   }
-}*/
-
+}
 
 // Screen functions 
 void menu_mode(){
@@ -1453,7 +1480,15 @@ void menu_mode(){
       Serial.print("Selected mode ");
       Serial.println(mode);
       if (mode==FREE_MODE){
+        display.clearDisplay();
+        display.setCursor(0,0); 
+        display.setTextSize(1);             // Normal 1:1 pixel scale
+        display.setTextColor(SSD1306_WHITE);
+        display.println(F("Let's play!!"));
+        display.display();
         start_game();
+        returnValue=0;
+        mode=1;
       }
       else{
         call_menu_song();
@@ -1537,6 +1572,9 @@ void call_menu_song(){
   while(returnValue==0){
     menu_song();
   }
+  mode=1;
+  songIndex=1;
+  songNum=0;
   returnValue=0;
 }
 
@@ -1598,7 +1636,7 @@ void menu_song(){
       display.setCursor(0,0); 
       display.setTextSize(1);                     // Normal 1:1 pixel scale
       display.setTextColor(SSD1306_WHITE); 
-      display.println(F("loading the song..... "));
+      display.println(F("Loading the song...."));
       display.display();
       
       String payload = readFromGoogleSheets(songNum);
@@ -1606,15 +1644,18 @@ void menu_song(){
         split_arrays(payload); //keep the music array (notes,dur,num) in global arrays
       } 
 
+      // song loaded lets play
       display.clearDisplay();
       display.setCursor(0,0); 
       display.println(F("Let's play!!"));
       display.display();
 
-      Serial.println(payload);
-
       start_game();
-      songNum=0;
+      
+      // TOASK
+      //once it's over or clicked Return --> show the song menu again with same mode
+      returnValue=0; 
+      songNum=0; //cursor all the way up? TOASK
       songIndex=1;
       return;
     }
@@ -1623,7 +1664,7 @@ void menu_song(){
       songNum=0;
       songIndex=1;
       mode=1;
-      returnValue=1;
+      returnValue=1; // return to the menu of mode
       return;
     }
   }
@@ -1916,6 +1957,37 @@ String readColumnFromGoogleSheets(){
   }
 }
 
+int checkReturnButton()
+{
+  buttonReturnState = digitalRead(buttonReturnPin);
+  if (buttonReturnState==HIGH) {
+    Serial.println("");
+    Serial.println("Return has been clicked");
+    returnValue= 1;
+    turnOffAllSounds();
+    pixels.clear();
+    pixels.show();
+    errors_count=0;
+    note_index=0;
+    num_note_index=0;
+    return 1;
+  }
+
+  returnValue=0;
+  return 0;
+}
+
+void turnOffAllSounds()
+{
+  ledcWrite(DO1_CHANNEL, 0);
+  ledcWrite(RE_CHANNEL, 0);
+  ledcWrite(MI_CHANNEL, 0);
+  ledcWrite(FA_CHANNEL, 0);
+  ledcWrite(SOL_CHANNEL, 0);
+  ledcWrite(LA_CHANNEL, 0);
+  ledcWrite(SI_CHANNEL, 0);
+  ledcWrite(DO2_CHANNEL, 0);
+}
 
 // SET UP FUNCTIONS //
 void welcome_sound_and_led(){
@@ -1952,8 +2024,24 @@ void setup_screen(){
     Serial.println(F("SSD1306 allocation failed"));
     for(;;); // Don't proceed, loop forever
   }
-
+  
   display.display();
+  delay(500);
+  display.clearDisplay();
+  display.setTextSize(1);                     // Normal 1:1 pixel scale
+  display.setTextColor(SSD1306_WHITE); 
+  display.setCursor(0,0); 
+  display.println(F("Waiting for the wifi..."));
+  display.display();
+
+  // SET UP FOR GOOGLE SHEET 
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
   String column = readColumnFromGoogleSheets();
   Serial.println("songs are: ");
   Serial.println(column);
