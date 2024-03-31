@@ -130,7 +130,7 @@ String num_notes_TOADD;
 int count_TOADD=0;
 
 String SongNames[1000];
-int NumSongsTotal = 3;
+int NumSongsTotal = 6;
 int mode = 1;
 int songNum = 0;
 int songIndex = 1;
@@ -1418,6 +1418,7 @@ void record_mode(){
   }
   String name_TOADD = "SongAdded" + String(NumSongsTotal);
   writetoGoogleSheets(name_TOADD, count_TOADD, notes_TOADD, duration_note_TOADD, num_notes_TOADD);
+  SongNames[NumSongsTotal] = name_TOADD;
   NumSongsTotal+=1;
 }
 
@@ -1613,6 +1614,7 @@ void menu_song(){
       if (songIndex == 1){
         if(songNum!=0) {
           songNum -=5; //get 5 before (we display them 5 by 5)
+          songIndex=5;
         }
       }
       else{
@@ -1632,6 +1634,7 @@ void menu_song(){
       if (songIndex == 5){ 
         if (songNum+5<NumSongsTotal){
           songNum +=5; //get 5 after (we display them 5 by 5)
+          songIndex=1;
         }
       }
       else if (songIndex+songNum<NumSongsTotal){
