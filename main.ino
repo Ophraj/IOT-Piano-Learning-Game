@@ -91,7 +91,7 @@ int dc = 128;
 // GOOGLE SHEET 
 #define WIFI_SSID "Ophra Iphone"
 #define WIFI_PASSWORD "ophraaaa"
-String GOOGLE_SCRIPT_ID = "AKfycbxXSI4WI69hEjqqtUgDvyadQF84r0Jkc7M-9XHJstTIqqyZywKauGdRqMFZYKvHzms2Aw";    // change Google script ID
+String GOOGLE_SCRIPT_ID = "AKfycbycBa29FiR0aFYzFBqO9NSIHdFXieGYoNl2Y2nTU2fpccIP18JRCiffyQJun-Vd2gnYjQ";    // change Google script ID
 
 // Screen and buttons 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
@@ -130,7 +130,7 @@ String num_notes_TOADD;
 int count_TOADD=0;
 
 String SongNames[1000];
-int NumSongsTotal = 6;
+int NumSongsTotal = 3;
 int mode = 1;
 int songNum = 0;
 int songIndex = 1;
@@ -151,6 +151,9 @@ int errors_count = 0;
 unsigned long start_time = 0;
 unsigned long touch_time= 0;
 unsigned long duration_total = 0;
+double duration_average=0;
+
+
 
 void setup() {
   Serial.begin(115200);
@@ -187,20 +190,30 @@ void start_game() {
   num_note_index=0;
   errors_count=0;
   duration_total=0;
+  duration_average=0;
   Serial.println("Starting game");
 
   if (mode == EASY_MODE){
     easy_mode();
+    if (returnValue!=1){
+      display_stats();
+    }
     return;
   }
 
   if (mode== MEDIUM_MODE){
     medium_and_advanced_mode();
+    if (returnValue!=1){
+      display_stats();
+    }    
     return;
   }
 
   if (mode == ADVANCED_MODE){
     medium_and_advanced_mode();
+    if (returnValue!=1){
+      display_stats();
+    }
     return;
   }
 
@@ -227,7 +240,7 @@ void start_game() {
     display.println(F("Record Mode"));
     display.print(F("Name of the song is: "));
     display.println(name_TOADD);
-    display.println(F("To validate press SELECT (green button)"));
+    display.println(F("To validate press SELECT"));
     display.display();
 
     record_mode();
@@ -235,38 +248,111 @@ void start_game() {
   }
 }
 
+void display_stats(){
+  display.clearDisplay();
+  display.setCursor(0,0); 
+  display.setTextSize(1);            
+  display.setTextColor(SSD1306_WHITE);
+
+  if (errors_count == 0){
+    display.println(F("     0 errors!"));
+    display.println(F("     Well Done!"));
+  }
+  else if (errors_count == 1){
+    display.println(F("      1 error!"));
+    display.println(F("  Almost perfect!"));
+  }
+  else if (errors_count <= 3){
+    display.println(F("Less then 3 errors!"));
+    display.println(F("You can do better!"));
+  }
+  else {
+    display.println(F("More than 3 errors"));
+    display.println(F("Practice again!"));
+  }
+  display.println(F(""));
+  display.print(F("average response time is: "));
+  display.print(duration_average);
+  display.println(F(" sec"));
+
+  display.display();
+  writeStatstoGoogleSheets(songNum, errors_count, duration_average);
+  delay(4000);
+}
+
 // PLAY THE SONG
 void play_song(){
-  note_index=0;
+  num_note_index=0;
+  note_index=0;  
   while (note_index<count_note) {
+    int num_note = num_notes[num_note_index]; // How many notes in the same time
+    num_note_index+=1;
+    if (num_note==1){
+      String note = notes[note_index];
+      int time = duration_note[note_index];
 
-  String note = notes[note_index];
-  int time = duration_note[note_index];
+      unsigned long start = millis();
+      unsigned long end = millis();
+      while (end-start<time)
+      {
+        Serial.println("play song check return");
+        if (checkReturnButton()==1)
+        {
+          return; 
+        }
+        end = millis();
+        dc = 128;
+        light_led_note(note); 
+        turnOn_son_note(note);
+      }
 
-  unsigned long start = millis();
-  unsigned long end = millis();
-  while (end-start<time)
-  {
-    Serial.println("play song check return");
-    if (checkReturnButton()==1)
-    {
-      return; 
+      turnOff_son_note(note);
+      pixels.clear();
+      pixels.show();
+      if (checkReturnButton()==1)
+        {
+          return; 
+        }  
+      note_index++;
+      delay(10);
     }
-    end = millis();
-    dc = 128;
-    light_led_note(note); 
-    turnOn_son_note(note);
-  }
 
-  turnOff_son_note(note);
-  pixels.clear();
-  pixels.show();
-  if (checkReturnButton()==1)
-    {
-      return; 
-    }  
-  note_index++;
-  delay(10);
+    if(num_note==2){
+      //first note
+      String note1 = notes[note_index];
+      int time1 = duration_note[note_index];
+      note_index++;
+      
+      //second note
+      String note2 = notes[note_index];
+
+      unsigned long start = millis();
+      unsigned long end = millis();
+      while (end-start<time1)
+      {
+        if (checkReturnButton()==1)
+        {
+          return; 
+        }
+        end = millis();
+        dc = 128;
+        light_led_note(note1);
+        light_led_note(note2); 
+        turnOn_son_note(note1);
+        turnOn_son_note(note2);
+      }
+
+      turnOff_son_note(note1);
+      turnOff_son_note(note2);
+      pixels.clear();
+      pixels.show();
+      if (checkReturnButton()==1)
+        {
+          return; 
+        }  
+      note_index++;
+      delay(10);
+    }
   }
 
   //song played 
@@ -345,6 +431,52 @@ void turnOff_son_note(String note){
   {
     return; 
   } 
+}
+
+// light the led according to the note in white
+void light_led_note(String note){
+
+  if (checkReturnButton()==1)
+  {
+    return; 
+  }
+  if (note=="None"){
+    return;
+  }
+
+  if (note=="DO1"){
+      pixels.setPixelColor(DO1_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();   // Send the updated pixel colors to the hardware.
+  }
+   if (note=="RE"){
+      pixels.setPixelColor(RE_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();   // Send the updated pixel colors to the hardware.
+  }
+   if (note=="MI"){
+      pixels.setPixelColor(MI_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();   // Send the updated pixel colors to the hardware.
+  }
+   if (note=="FA"){
+      pixels.setPixelColor(FA_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();   // Send the updated pixel colors to the hardware.
+  }
+   if (note=="SOL"){
+      pixels.setPixelColor(SOL_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();   // Send the updated pixel colors to the hardware.
+  }
+   if (note=="LA"){
+      pixels.setPixelColor(LA_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();   // Send the updated pixel colors to the hardware.
+  }
+   if (note=="SI"){
+      pixels.setPixelColor(SI_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();   // Send the updated pixel colors to the hardware.
+  }
+   if (note=="DO2"){
+      pixels.setPixelColor(DO2_PIXEL, pixels.Color(255, 255, 255));
+      pixels.show();   // Send the updated pixel colors to the hardware.
+  }
+
 }
 
 //FREE PLAYING FUNCTION
@@ -462,7 +594,7 @@ void free_playing(){
   }
 }
 
-// EASY MODE FUNCTIONS 
+// EASY MODE 
 void easy_mode(){
   Serial.println("You are in easy mode");
 
@@ -509,30 +641,116 @@ void easy_mode(){
   }
 
   pixels.clear();
-  double duration_average = duration_total/count_note;
+  duration_average = duration_total/count_note;
+  duration_average = duration_average/1000;
   Serial.print("You had ");
   Serial.print(errors_count);
   Serial.println(" mistakes");
 
-  if (errors_count == 0){
-    Serial.println("Well Done!");
-  }
-  else if (errors_count == 1){
-    Serial.println("Almost perfect, good job :)");
-  }
-  else if (errors_count <= 3){
-    Serial.println("good ,you can do better");
-  }
-  else {
-    Serial.println("Keep practicing, eventually you will learn to play the piano");
-  }
   Serial.print("Your average response time is: ");
   Serial.println(duration_average);
   note_index=0;
-  errors_count=0;
   checkReturnButton();
 }
 
+// ADVANCED and MEIDUM MODE 
+void medium_and_advanced_mode(){
+  Serial.println("advanced mode");
+  
+  play_song();
+  if(returnValue==1)
+  {
+    return;
+  }
+  num_note_index=0;
+  note_index=0;
+  while (note_index<count_note) {
+    if (checkReturnButton()==1)
+      {
+        return; 
+      }
+    Serial.print("note index is ");
+    Serial.println(note_index);
+    int num_note = num_notes[num_note_index]; // How many notes in the same time
+    num_note_index+=1;
+    Serial.println("num notes is ");
+    Serial.println(num_note);
+
+    // if one note 
+    if (num_note==1){
+
+      // GET THE NOTE
+      String note = notes[note_index];
+      int time = duration_note[note_index];
+      // LIGHT THE LED
+      light_led_note(note);
+
+      // LET PLAYER PLAY THE KEY
+      start_time = millis();
+      play_one_key_note(note);
+      if(returnValue==1)
+      {
+        return;
+      }
+      touch_time= millis();
+      duration_total += (touch_time-start_time);
+
+      // TURN OFF THE LED
+      pixels.clear();
+      pixels.show();  
+      note_index+=1;
+      continue;
+    }
+
+    // if two notes 
+    if (num_note==2){
+      Serial.println("There are 2 notes");
+
+      //first note
+      String note1 = notes[note_index];
+      int time1 = duration_note[note_index];
+      note_index++;
+      
+      //second note
+      String note2 = notes[note_index];
+      int time2 = duration_note[note_index];
+      Serial.println(note1);
+      Serial.println(note2);
+
+      // light notes in white
+      light_led_note(note1);
+      light_led_note(note2);
+
+      // LET THE PLAYER PLAY THE 2 NOTES
+      start_time = millis();
+      play_two_keys_notes(note1, note2);
+      if (returnValue==1)
+      {
+        return;
+      }
+      touch_time= millis();
+      duration_total += (touch_time-start_time);
+
+      // TURN OFF THE LED
+      pixels.clear();
+      pixels.show();  
+      note_index+=1;
+      continue;
+    }
+  }
+
+  pixels.clear();
+  duration_average = duration_total/count_note;
+  duration_average = duration_average/1000;
+  Serial.print("You had ");
+  Serial.print(errors_count);
+  Serial.println(" mistakes");
+
+  Serial.print("Your average response time is: ");
+  Serial.println(duration_average);
+  note_index=0;
+  checkReturnButton();
+}
 
 // Call function to play the key according to the note - ONE NOTE
 void play_one_key_note(String note){
@@ -701,80 +919,6 @@ void play_one_key_params(String note, int touch_pin, int channel, int pixel){
 
     checkReturnButton();
     return;
-}
-
-// show all red leds 3 times and add one to errors_count
-void error_touch(){
-  for(int j=0; j<3; j++) { 
-      for(int i=0; i<NUMPIXELS; i++) { 
-          pixels.setPixelColor(i, pixels.Color(255, 0, 0));     //light in red 3 times  
-          pixels.show();
-          if (checkReturnButton()==1)
-          {
-            return; 
-          }                          
-      }
-      delay(300);
-      if (checkReturnButton()==1)
-      {
-        return; 
-      }                            
-      pixels.clear();
-      pixels.show();
-      delay(300); 
-      if (checkReturnButton()==1)
-      {
-        return; 
-      }                          
-  }
-  errors_count += 1;
-  return;
-}
-
-// light the led according to the note in white
-void light_led_note(String note){
-
-  if (checkReturnButton()==1)
-  {
-    return; 
-  }
-  if (note=="None"){
-    return;
-  }
-
-  if (note=="DO1"){
-      pixels.setPixelColor(DO1_PIXEL, pixels.Color(255, 255, 255));
-      pixels.show();   // Send the updated pixel colors to the hardware.
-  }
-   if (note=="RE"){
-      pixels.setPixelColor(RE_PIXEL, pixels.Color(255, 255, 255));
-      pixels.show();   // Send the updated pixel colors to the hardware.
-  }
-   if (note=="MI"){
-      pixels.setPixelColor(MI_PIXEL, pixels.Color(255, 255, 255));
-      pixels.show();   // Send the updated pixel colors to the hardware.
-  }
-   if (note=="FA"){
-      pixels.setPixelColor(FA_PIXEL, pixels.Color(255, 255, 255));
-      pixels.show();   // Send the updated pixel colors to the hardware.
-  }
-   if (note=="SOL"){
-      pixels.setPixelColor(SOL_PIXEL, pixels.Color(255, 255, 255));
-      pixels.show();   // Send the updated pixel colors to the hardware.
-  }
-   if (note=="LA"){
-      pixels.setPixelColor(LA_PIXEL, pixels.Color(255, 255, 255));
-      pixels.show();   // Send the updated pixel colors to the hardware.
-  }
-   if (note=="SI"){
-      pixels.setPixelColor(SI_PIXEL, pixels.Color(255, 255, 255));
-      pixels.show();   // Send the updated pixel colors to the hardware.
-  }
-   if (note=="DO2"){
-      pixels.setPixelColor(DO2_PIXEL, pixels.Color(255, 255, 255));
-      pixels.show();   // Send the updated pixel colors to the hardware.
-  }
-
 }
 
 
@@ -1139,7 +1283,35 @@ void play_two_keys_params(int touch_pin1, int channel1, int pixel1, int touch_pi
   checkReturnButton();
 }
 
-// Check if a pin was falsly touched 
+// show all red leds 3 times and add one to errors_count
+void error_touch(){
+  for(int j=0; j<3; j++) { 
+      for(int i=0; i<NUMPIXELS; i++) { 
+          pixels.setPixelColor(i, pixels.Color(255, 0, 0));     //light in red 3 times  
+          pixels.show();
+          if (checkReturnButton()==1)
+          {
+            return; 
+          }                          
+      }
+      delay(300);
+      if (checkReturnButton()==1)
+      {
+        return; 
+      }                            
+      pixels.clear();
+      pixels.show();
+      delay(300); 
+      if (checkReturnButton()==1)
+      {
+        return; 
+      }                          
+  }
+  errors_count += 1;
+  return;
+}
+
+// Check if a pin was falsly touched (two keys)
 int false_touched_pin(int touchpin1, int touchpin2){
   for (int i=0; i<7; i++){
     if (i!=touchpin1 && i!=touchpin2)
@@ -1295,94 +1467,6 @@ void false_touched_note_medium_mode(uint32_t currtouched){
 }
 
 
-// ADVANCED MODE 
-void medium_and_advanced_mode(){
-  Serial.println("advanced mode");
-  
-  play_song();
-  if(returnValue==1)
-  {
-    return;
-  }
-  num_note_index=0;
-  note_index=0;
-  while (note_index<count_note) {
-    if (checkReturnButton()==1)
-      {
-        return; 
-      }
-    Serial.print("note index is ");
-    Serial.println(note_index);
-    int num_note = num_notes[num_note_index]; // How many notes in the same time
-    num_note_index+=1;
-    Serial.println("num notes is ");
-    Serial.println(num_note);
-
-    // if one note 
-    if (num_note==1){
-
-      // GET THE NOTE
-      String note = notes[note_index];
-      int time = duration_note[note_index];
-      // LIGHT THE LED
-      light_led_note(note);
-
-      // LET PLAYER PLAY THE KEY
-      start_time = millis();
-      play_one_key_note(note);
-      if(returnValue==1)
-      {
-        return;
-      }
-      touch_time= millis();
-      duration_total += (touch_time-start_time);
-
-      // TURN OFF THE LED
-      pixels.clear();
-      pixels.show();  
-      note_index+=1;
-      continue;
-    }
-
-    // if two notes 
-    if (num_note==2){
-      Serial.println("There are 2 notes");
-
-      //first note
-      String note1 = notes[note_index];
-      int time1 = duration_note[note_index];
-      note_index++;
-      
-      //second note
-      String note2 = notes[note_index];
-      int time2 = duration_note[note_index];
-      Serial.println(note1);
-      Serial.println(note2);
-
-      // light notes in white
-      light_led_note(note1);
-      light_led_note(note2);
-
-      // LET THE PLAYER PLAY THE 2 NOTES
-      start_time = millis();
-      play_two_keys_notes(note1, note2);
-      if (returnValue==1)
-      {
-        return;
-      }
-      touch_time= millis();
-      duration_total += (touch_time-start_time);
-
-      // TURN OFF THE LED
-      pixels.clear();
-      pixels.show();  
-      note_index+=1;
-      continue;
-    }
-  }
-  checkReturnButton();
-}
-
 // RECORD MODE 
 void record_mode(){
   unsigned long start_note = millis();
@@ -1421,7 +1505,6 @@ void record_mode(){
   SongNames[NumSongsTotal] = name_TOADD;
   NumSongsTotal+=1;
 }
-
 
 void record_mode_note(String note_played, int channel, int pixel_pin, int touch_pin){
   currtouched = cap.touched();
@@ -1908,9 +1991,32 @@ void writetoGoogleSheets(String song, int coount, String notes, String duration,
       }
       http.end();
     }
-    Serial.println("Request sent to write data to Google Sheets");
 }
 
+void writeStatstoGoogleSheets(int numSong, int errors, double time){
+  if (WiFi.status() == WL_CONNECTED) {
+
+      String url = "https://script.google.com/macros/s/" + GOOGLE_SCRIPT_ID+"/exec" ;
+      url += "?action=write";
+      url += "&stat=1";
+      url += "&song=" + String(numSong);
+      url += "&errors=" + String(errors);
+      url += "&time=" + String(time);
+
+      Serial.println(url);
+      HTTPClient http;
+      http.begin(url.c_str());
+      http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+      int httpCode = http.GET(); 
+
+      String payload;
+      if (httpCode > 0) {
+          payload = http.getString();
+          Serial.println("Payload: "+ payload);    
+      }
+      http.end();
+    }
+}
 
 String readFromGoogleSheets(int song) {
  if (WiFi.status() == WL_CONNECTED) {
