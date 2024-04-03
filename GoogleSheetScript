@@ -1,0 +1,160 @@
+
+var sheet_id = "1pZ8jRfhP_1pBa6_d6HEmbXH9C05siOqeHuzbPHwF22w";
+var sheet_name = "Song1";
+function doGet(e){
+  var action = e.parameter.action;
+  
+  if (action=="write"){
+    var stat = e.parameter.stat;
+    if (stat=="1"){
+      return writeStats(e);
+    }
+    else{
+      return writeSong(e);
+    }
+  }
+
+  else {
+    var column = e.parameter.column;
+    var name = e.parameter.name;
+
+    if (column=="1"){
+      return getNamesColumn(e);
+    }
+    if (name=="1"){
+      return readName(e);
+    }
+    if (error="1"){
+      return readStats(e);
+    }
+
+    else{
+      return readRow(e);
+    }
+  }
+}
+
+
+function writeSong(e){
+
+  var ss = SpreadsheetApp.openById(sheet_id);
+  var sheet = ss.getSheetByName(sheet_name);
+
+  var song = "'" + e.parameter.song; //string
+  var count = "'" + Number(e.parameter.count); //number
+
+  // arrays
+  var notes = "'" + e.parameter.notes;
+  var duration = "'" + e.parameter.duration; // Join duration values into a single string
+  var num = "'" + e.parameter.num;
+  
+  sheet.appendRow([song, count, notes, duration, num]);
+  return ContentService.createTextOutput("Stats added successfully.");
+}
+
+function writeStats(e){
+
+  var ss = SpreadsheetApp.openById(sheet_id);
+  var sheet = ss.getSheetByName(sheet_name);
+
+  var song = Number(e.parameter.song)+2;
+
+  if (isNaN(song) || song < 1 || song > sheet.getLastRow()) {
+    return ContentService.createTextOutput("Invalid row number");
+  }
+
+  var errors = Number(e.parameter.errors);
+  var time = e.parameter.time;
+  var columnerror = 6;
+  var columntime= 7;
+  var currentErrors = sheet.getRange(song, columnerror).getValue(); // Column F
+  var currentTime = sheet.getRange(song, columntime).getValue(); // Column G
+
+  /*if (currentErrors == null || currentErrors == undefined || isNaN(currentErrors)) {
+    // If currentErrors is null or undefined, set it to the new errors value
+    sheet.getRange(song, columnerror).setValue(errors); // Column F
+    return ContentService.createTextOutput("adding errors");
+  } else {*/
+    // Otherwise, update the value if the new value is smaller (less errors better perf)
+  //if (errors < currentErrors) {
+  sheet.getRange(song, columnerror).setValue(errors); // Column F
+  //}
+
+  /*if (currentTime == null || currentTime == undefined || isNaN(currentTime)) {
+    // If currentTime is null or undefined, set it to the new time value
+    sheet.getRange(song, columntime).setValue(time); // Column G
+  } else {*/
+    // Otherwise, update the value if the new value is smaller (better perf less time)
+  //if (time < currentTime) {
+  sheet.getRange(song, columntime).setValue(time); // Column G
+    //}
+  //}
+  return ContentService.createTextOutput("Stats added successfully.");
+}
+
+function readRow(e) {
+  var ss = SpreadsheetApp.openById(sheet_id);
+  var sheet = ss.getSheetByName(sheet_name);
+  var rowNum = Number(e.parameter.row)+2;
+
+  if (isNaN(rowNum) || rowNum < 1 || rowNum > sheet.getLastRow()) {
+    return ContentService.createTextOutput("");// Return an empty string
+  }
+  var rowValues = sheet.getRange(rowNum, 1, 1, sheet.getLastColumn()).getValues()[0];
+  return ContentService.createTextOutput(rowValues.join('/'));
+}
+
+function readName(e){
+  var ss = SpreadsheetApp.openById(sheet_id);
+  var sheet = ss.getSheetByName(sheet_name);
+  var rowNum = Number(e.parameter.row)+2;
+
+  if (isNaN(rowNum) || rowNum < 1 || rowNum > sheet.getLastRow()) {
+    return ContentService.createTextOutput(""); // Return an empty string
+  }
+  var songName = sheet.getRange(rowNum, 1).getValue(); // Get the value of the cell
+  return ContentService.createTextOutput(songName);
+}
+
+function readStats(e){
+  var ss = SpreadsheetApp.openById(sheet_id);
+  var sheet = ss.getSheetByName(sheet_name);
+  var rowNum = Number(e.parameter.row)+2;
+
+  if (isNaN(rowNum) || rowNum < 1 || rowNum > sheet.getLastRow()) {
+    return ContentService.createTextOutput(""); // Return an empty string
+  }
+
+  // Get the range for Column F and Column G for the specified row
+  var range = sheet.getRange(rowNum, 6, 1, 2); // Column F is index 6, Column G is index 7
+
+  // Get the values in the range
+  var values = range.getValues();
+
+  // Flatten the 2D array to a 1D array
+  var rowValues = values[0];
+
+  // Create a string with the values joined by a delimiter
+  var result = rowValues.join('/');
+
+  return ContentService.createTextOutput(result);
+}
+
+function getNamesColumn(e) {
+  var ss = SpreadsheetApp.openById(sheet_id);
+  var sheet = ss.getSheetByName(sheet_name);
+  var column="A";
+
+  // Get the range for the specified column
+  var range = sheet.getRange(column + "2:" + column + sheet.getLastRow());
+
+  // Get the values in the column
+  var values = range.getValues();
+
+  // Flatten the 2D array to a 1D array
+  var columnValues = values.map(function(row) {
+    return row[0];
+  });
+
+  return ContentService.createTextOutput(columnValues.join('/'));
+}
