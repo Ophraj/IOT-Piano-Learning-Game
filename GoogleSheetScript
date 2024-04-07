@@ -17,6 +17,8 @@ function doGet(e){
   else {
     var column = e.parameter.column;
     var name = e.parameter.name;
+    var error = e.parameter.error;
+    var numsong= e.parameter.numsong;
 
     if (column=="1"){
       return getNamesColumn(e);
@@ -24,10 +26,16 @@ function doGet(e){
     if (name=="1"){
       return readName(e);
     }
-    if (error="1"){
+    if (error=="1"){
       return readStats(e);
     }
-
+    if(numsong=="1")
+    {
+      var ss = SpreadsheetApp.openById(sheet_id);
+      var sheet = ss.getSheetByName(sheet_name);
+      var lastRow = sheet.getLastRow();
+      return ContentService.createTextOutput(String(lastRow));
+    }
     else{
       return readRow(e);
     }
@@ -67,40 +75,23 @@ function writeStats(e){
   var time = e.parameter.time;
   var columnerror = 6;
   var columntime= 7;
-  var currentErrors = sheet.getRange(song, columnerror).getValue(); // Column F
-  var currentTime = sheet.getRange(song, columntime).getValue(); // Column G
-
-  /*if (currentErrors == null || currentErrors == undefined || isNaN(currentErrors)) {
-    // If currentErrors is null or undefined, set it to the new errors value
-    sheet.getRange(song, columnerror).setValue(errors); // Column F
-    return ContentService.createTextOutput("adding errors");
-  } else {*/
-    // Otherwise, update the value if the new value is smaller (less errors better perf)
-  //if (errors < currentErrors) {
+  
   sheet.getRange(song, columnerror).setValue(errors); // Column F
-  //}
-
-  /*if (currentTime == null || currentTime == undefined || isNaN(currentTime)) {
-    // If currentTime is null or undefined, set it to the new time value
-    sheet.getRange(song, columntime).setValue(time); // Column G
-  } else {*/
-    // Otherwise, update the value if the new value is smaller (better perf less time)
-  //if (time < currentTime) {
+  
   sheet.getRange(song, columntime).setValue(time); // Column G
-    //}
-  //}
+  
   return ContentService.createTextOutput("Stats added successfully.");
 }
 
 function readRow(e) {
   var ss = SpreadsheetApp.openById(sheet_id);
   var sheet = ss.getSheetByName(sheet_name);
-  var rowNum = Number(e.parameter.row)+2;
+  var row = Number(e.parameter.row)+2;
 
-  if (isNaN(rowNum) || rowNum < 1 || rowNum > sheet.getLastRow()) {
+  if (isNaN(row) || row < 1 || row > sheet.getLastRow()) {
     return ContentService.createTextOutput("");// Return an empty string
   }
-  var rowValues = sheet.getRange(rowNum, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var rowValues = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
   return ContentService.createTextOutput(rowValues.join('/'));
 }
 
