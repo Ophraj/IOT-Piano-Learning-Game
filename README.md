@@ -14,6 +14,7 @@ The piano has 6 different modes:
 
 The piano comes with a googleSheet where you can write new songs or see the notes of the songs already written! This is the google sheet link: 
 https://docs.google.com/spreadsheets/d/1pZ8jRfhP_1pBa6_d6HEmbXH9C05siOqeHuzbPHwF22w/edit#gid=0
+and this is the deployment key: AKfycbxUdnas0tGWlM5LPutQGvZZ1Wq5SBKchdfWq7itF9dPMG4jmHmJN7R0-cOLQ7Sc15U5DQ
 
 In the code part we have: 
 
